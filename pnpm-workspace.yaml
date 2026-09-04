@@ -1,0 +1,11 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# Autorise les scripts de build des dépendances qui en ont réellement besoin
+# (esbuild est requis par Vite et tsx pour fonctionner).
+onlyBuiltDependencies:
+  - esbuild
+
+allowBuilds:
+  esbuild: set this to true or false
