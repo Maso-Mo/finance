@@ -3,9 +3,11 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import HomePage from './pages/HomePage';
 import TransactionsPage from './pages/TransactionsPage';
+import PlannedExpensesPage from './pages/PlannedExpensesPage';
 
 /**
- * Routage minimal : login / register / pages protégées (accueil, transactions).
+ * Routage minimal : login / register / pages protégées (accueil, transactions,
+ * dépenses à venir).
  */
 export default function App() {
   return (
@@ -14,6 +16,7 @@ export default function App() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/" element={<HomePage />} />
       <Route path="/transactions" element={<TransactionsPage />} />
+      <Route path="/planned" element={<PlannedExpensesPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

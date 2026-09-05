@@ -6,11 +6,12 @@ import type { AccountPublic, Currency } from '@finance/shared-types';
 import { useAuth } from '../auth/AuthContext';
 import {
   apiGetAccounts,
+  apiGetReminders,
   apiSetCurrency,
   apiSetTargetBalance,
 } from '../auth/api';
 import { ThemeToggle } from '../components/ThemeToggle';
-import { ACCOUNT_TYPE_LABELS, currencyName, formatMoney } from '../lib/format';
+import { ACCOUNT_TYPE_LABELS, currencyName, formatMoney, toISODate } from '../lib/format';
 
 function AccountRow({
   account,
@@ -128,6 +129,13 @@ export default function HomePage() {
     },
   });
 
+  // Rappels « Payé ? » (étape 6) : comptés sur le jour LOCAL du navigateur.
+  const remindersQuery = useQuery({
+    queryKey: ['reminders'],
+    queryFn: () => apiGetReminders(toISODate(new Date())),
+    enabled: status === 'authenticated',
+  });
+
   const accounts = useMemo(() => {
     if (!data) {
       return [];
@@ -233,6 +241,43 @@ export default function HomePage() {
               ))}
             </ul>
           )}
+        </section>
+
+        <section className="mt-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                Paiements à confirmer
+              </p>
+              {remindersQuery.data ? (
+                <p className="mt-1 text-2xl font-semibold tabular-nums">
+                  {remindersQuery.data.overdue.length +
+                    remindersQuery.data.dueToday.length +
+                    remindersQuery.data.upcoming.length}
+                </p>
+              ) : (
+                <p className="mt-1 text-2xl font-semibold">…</p>
+              )}
+              <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                {remindersQuery.data ? (
+                  <>
+                    {remindersQuery.data.overdue.length > 0 &&
+                      `${remindersQuery.data.overdue.length} en retard · `}
+                    {remindersQuery.data.dueToday.length > 0 &&
+                      `${remindersQuery.data.dueToday.length} aujourd'hui · `}
+                    {remindersQuery.data.upcoming.length > 0 &&
+                      `${remindersQuery.data.upcoming.length} bientôt`}
+                  </>
+                ) : null}
+              </p>
+            </div>
+            <Link
+              to="/planned"
+              className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            >
+              Dépenses à venir
+            </Link>
+          </div>
         </section>
 
         <p className="mt-4 text-xs text-neutral-500 dark:text-neutral-500">

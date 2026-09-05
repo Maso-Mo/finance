@@ -4,7 +4,20 @@ import type {
   CategoriesResponse,
   Currency,
   DashboardResponse,
+  PlannedExpenseConfirmPaid,
+  PlannedExpenseConfirmPaidResponse,
+  PlannedExpenseCreate,
+  PlannedExpenseMutationResponse,
+  PlannedExpensePublic,
+  PlannedExpensesResponse,
+  PlannedExpenseUpdate,
   PublicUser,
+  RecurringExpenseCreate,
+  RecurringExpenseMutationResponse,
+  RecurringExpensePublic,
+  RecurringExpenseUpdate,
+  RecurringExpensesResponse,
+  RemindersResponse,
   TransactionMutationResponse,
   TransactionsResponse,
   TransactionUpsert,
@@ -217,3 +230,106 @@ export async function apiDeleteTransaction(
     method: 'DELETE',
   });
 }
+
+// --- Dépenses futures planifiées (étape 6) ---
+
+/** Toutes les dépenses futures (PENDING + résolues), bucket dérivé. */
+export async function apiGetPlannedExpenses(
+  today?: string,
+): Promise<PlannedExpensesResponse> {
+  const query = today ? `?today=${today}` : '';
+  return request<PlannedExpensesResponse>(`/planned-expenses${query}`);
+}
+
+/** Crée une dépense future ponctuelle (PENDING : aucun impact sur les soldes). */
+export async function apiCreatePlannedExpense(
+  input: PlannedExpenseCreate,
+): Promise<PlannedExpenseMutationResponse> {
+  return request<PlannedExpenseMutationResponse>('/planned-expenses', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+/** Modifie une dépense planifiée encore PENDING. */
+export async function apiUpdatePlannedExpense(
+  plannedExpenseId: string,
+  input: PlannedExpenseUpdate,
+): Promise<PlannedExpenseMutationResponse> {
+  return request<PlannedExpenseMutationResponse>(
+    `/planned-expenses/${plannedExpenseId}`,
+    { method: 'PATCH', body: input },
+  );
+}
+
+/** Annule (ponctuelle → CANCELED) ou ignore (occurrence → SKIPPED). */
+export async function apiCancelPlannedExpense(
+  plannedExpenseId: string,
+): Promise<PlannedExpenseMutationResponse> {
+  return request<PlannedExpenseMutationResponse>(
+    `/planned-expenses/${plannedExpenseId}`,
+    { method: 'DELETE' },
+  );
+}
+
+/** « Oui, payé » : crée la vraie Transaction EXPENSE (atomique). */
+export async function apiConfirmPlannedExpensePaid(
+  plannedExpenseId: string,
+  input: PlannedExpenseConfirmPaid,
+): Promise<PlannedExpenseConfirmPaidResponse> {
+  return request<PlannedExpenseConfirmPaidResponse>(
+    `/planned-expenses/${plannedExpenseId}/confirm-paid`,
+    { method: 'POST', body: input },
+  );
+}
+
+/** « Pas encore » = aucune écriture. Ignorer CETTE occurrence récurrente. */
+export async function apiSkipPlannedExpense(
+  plannedExpenseId: string,
+): Promise<PlannedExpenseMutationResponse> {
+  return request<PlannedExpenseMutationResponse>(
+    `/planned-expenses/${plannedExpenseId}/skip`,
+    { method: 'POST' },
+  );
+}
+
+// --- Dépenses mensuelles récurrentes (étape 6) ---
+
+export async function apiGetRecurringExpenses(): Promise<RecurringExpensesResponse> {
+  return request<RecurringExpensesResponse>('/recurring-expenses');
+}
+
+export async function apiCreateRecurringExpense(
+  input: RecurringExpenseCreate,
+): Promise<RecurringExpenseMutationResponse> {
+  return request<RecurringExpenseMutationResponse>('/recurring-expenses', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+export async function apiUpdateRecurringExpense(
+  ruleId: string,
+  input: Partial<RecurringExpenseUpdate>,
+): Promise<RecurringExpenseMutationResponse> {
+  return request<RecurringExpenseMutationResponse>(
+    `/recurring-expenses/${ruleId}`,
+    { method: 'PATCH', body: input },
+  );
+}
+
+export async function apiDeleteRecurringExpense(ruleId: string): Promise<void> {
+  await request<void>(`/recurring-expenses/${ruleId}`, { method: 'DELETE' });
+}
+
+// --- Rappels internes « Payé ? » (read-only) ---
+
+/** today = jour local du navigateur (YYYY-MM-DD). */
+export async function apiGetReminders(
+  today: string,
+): Promise<RemindersResponse> {
+  return request<RemindersResponse>(`/reminders?today=${today}`);
+}
+
+export type { PlannedExpensePublic, RecurringExpensePublic };
+

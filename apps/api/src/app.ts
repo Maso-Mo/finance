@@ -15,6 +15,9 @@ import { accountsRouter } from './accounts/accounts.routes.js';
 import { updateUserCurrency } from './accounts/accounts.service.js';
 import { categoriesRouter } from './categories/categories.routes.js';
 import { transactionsRouter } from './transactions/transactions.routes.js';
+import { plannedExpensesRouter } from './planned-expenses/planned-expenses.routes.js';
+import { recurringExpensesRouter } from './recurring-expenses/recurring-expenses.routes.js';
+import { remindersRouter } from './reminders/reminders.routes.js';
 
 /**
  * Construction de l'application Express (sans démarrage réseau).
@@ -73,6 +76,15 @@ app.use('/categories', requireAuth, categoriesRouter);
 // Journal GLOBAL de transactions de l'utilisateur (protégé) : liste paginée,
 // création multi-comptes, modification atomique, suppression logique.
 app.use('/transactions', requireAuth, transactionsRouter);
+
+// Dépenses futures ponctuelles (étape 6) : PENDING = aucun impact financier.
+app.use('/planned-expenses', requireAuth, plannedExpensesRouter);
+
+// Dépenses mensuelles récurrentes (étape 6) : génèrent des occurrences.
+app.use('/recurring-expenses', requireAuth, recurringExpensesRouter);
+
+// Rappels internes « Payé ? » (étape 6) : en retard / aujourd'hui / à venir.
+app.use('/reminders', requireAuth, remindersRouter);
 
 // Préférence de devise principale de l'utilisateur (protégée).
 app.patch('/me/preferences', requireAuth, async (req, res) => {

@@ -1,6 +1,8 @@
 import { prisma } from '../db.js';
 import { ApiError } from '../http-error.js';
 import { allocationsMatchTotal } from '@finance/finance-core';
+import { assertSystemCategory } from '../categories/categories.service.js';
+import { Prisma } from '../generated/prisma/client.js';
 import type {
   AccountType,
   TransactionPublic,
@@ -120,16 +122,7 @@ async function assertAccountsOwned(
 async function assertCategoryAllowed(
   categoryId: string | undefined,
 ): Promise<void> {
-  if (!categoryId) {
-    return;
-  }
-  const row = await prisma.category.findFirst({
-    where: { id: categoryId, isSystem: true },
-    select: { id: true },
-  });
-  if (!row) {
-    throw new ApiError(400, 'Invalid category.');
-  }
+  return assertSystemCategory(categoryId);
 }
 
 /**
@@ -178,16 +171,19 @@ export async function getTransactionLedger(
   };
 }
 
-/** Crée une transaction + ses allocations de façon atomique. */
-export async function createTransaction(
+/**
+ * Validation commune du journal (règles étape 5) : comptes possédés,
+ * catégorie système, somme des allocations = montant EXACTEMENT. Réutilisée
+ * par la création libre, la modification et la confirmation « payé » d'une
+ * dépense planifiée (étape 6) : aucune duplication de règle métier.
+ */
+export async function validateTransactionInput(
   userId: string,
   input: TransactionUpsert,
-): Promise<TransactionPublic> {
+): Promise<void> {
   const allocations = input.allocations ?? [];
   await assertAccountsOwned(userId, allocations);
   await assertCategoryAllowed(input.categoryId);
-
-  // Allocations connues ⇒ somme = montant EXACTEMENT (decimal.js).
   if (!(input.accountUnknown ?? false)) {
     const match = allocationsMatchTotal(input.amount, allocations);
     if (!match) {
@@ -197,8 +193,22 @@ export async function createTransaction(
       );
     }
   }
+}
 
-  const row = await prisma.transaction.create({
+/**
+ * Crée une transaction + ses allocations dans le contexte transactionnel
+ * `tx` (PrismaClient ou TransactionClient). La validation métier est incluse
+ * : une écriture invalide est refusée avant tout INSERT.
+ */
+export async function createTransactionRecord(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  input: TransactionUpsert,
+): Promise<TransactionPublic> {
+  await validateTransactionInput(userId, input);
+  const allocations = input.allocations ?? [];
+
+  const row = await tx.transaction.create({
     data: {
       ...transactionData(userId, input),
       allocations:
@@ -215,6 +225,17 @@ export async function createTransaction(
   });
   return toPublicTransaction(row);
 }
+
+/** Crée une transaction + ses allocations de façon atomique. */
+export async function createTransaction(
+  userId: string,
+  input: TransactionUpsert,
+): Promise<TransactionPublic> {
+  return prisma.$transaction((tx) =>
+    createTransactionRecord(tx, userId, input),
+  );
+}
+
 
 
 /**
@@ -281,18 +302,35 @@ export async function updateTransaction(
   return toPublicTransaction(row);
 }
 
-/** Suppression LOGIQUE : la ligne reste en base (deletedAt), plus d'impact. */
+/**
+ * Suppression LOGIQUE : la ligne reste en base (deletedAt), plus d'impact.
+ *
+ * Cas particulier étape 6 : si cette Transaction réelle provenait d'une
+ * dépense planifiée confirmée, on remet ATOMIQUEMENT la PlannedExpense dans
+ * un état cohérent (PENDING + lien retiré) afin que l'utilisateur puisse la
+ * corriger/reconfirmer. Jamais de PlannedExpense « PAID » orpheline.
+ */
 export async function deleteTransaction(
   userId: string,
   transactionId: string,
 ): Promise<void> {
-  const result = await prisma.transaction.updateMany({
-    where: { id: transactionId, userId, deletedAt: null },
-    data: { deletedAt: new Date() },
+  await prisma.$transaction(async (tx) => {
+    const result = await tx.transaction.updateMany({
+      where: { id: transactionId, userId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    if (result.count === 0) {
+      // Ni trouvée, ni autorisée, ni déjà supprimée : réponse générique.
+      throw new ApiError(404, 'Transaction not found.');
+    }
+    await tx.plannedExpense.updateMany({
+      where: {
+        confirmedTransactionId: transactionId,
+        userId,
+        status: 'PAID',
+      },
+      data: { status: 'PENDING', confirmedTransactionId: null },
+    });
   });
-  if (result.count === 0) {
-    // Ni trouvée, ni autorisée, ni déjà supprimée : réponse générique.
-    throw new ApiError(404, 'Transaction not found.');
-  }
 }
 

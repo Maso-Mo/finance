@@ -1,5 +1,6 @@
 import { prisma } from '../db.js';
 import type { CategoriesResponse } from '@finance/shared-types';
+import { ApiError } from '../http-error.js';
 
 /**
  * Service des catégories (étape 5).
@@ -16,3 +17,24 @@ export async function listSystemCategories(): Promise<CategoriesResponse> {
   });
   return { categories: rows };
 }
+
+/**
+ * Vérifie qu'une catégorie référencée existe parmi les catégories système.
+ * Partagé par le journal (étape 5) et les dépenses planifiées (étape 6) :
+ * UN seul système de catégories, jamais de second référentiel.
+ */
+export async function assertSystemCategory(
+  categoryId: string | undefined | null,
+): Promise<void> {
+  if (!categoryId) {
+    return;
+  }
+  const row = await prisma.category.findFirst({
+    where: { id: categoryId, isSystem: true },
+    select: { id: true },
+  });
+  if (!row) {
+    throw new ApiError(400, 'Invalid category.');
+  }
+}
+
