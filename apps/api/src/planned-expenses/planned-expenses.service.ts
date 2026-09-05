@@ -4,7 +4,6 @@ import { assertSystemCategory } from '../categories/categories.service.js';
 import { dateInputToDate, dbDateToISO, todayLocalISO } from '../dates.js';
 import { classifyPlannedReminder } from '@finance/finance-core';
 import { createTransactionRecord } from '../transactions/transactions.service.js';
-import { ensureOccurrencesForUser } from '../recurring-expenses/occurrences.service.js';
 import type {
   Currency,
   PlannedExpenseConfirmPaid,
@@ -76,15 +75,17 @@ function normalizedDescription(value: string | null | undefined): string | null 
   return value && value.trim() ? value.trim() : null;
 }
 
-/** Jour de référence de maintenance AVANT lecture (rattrapage idempotent). */
+/**
+ * Liste des dépenses planifiées de l'utilisateur.
+ *
+ * STRICTEMENT READ-ONLY : aucune écriture Prisma. La maintenance des
+ * occurrences récurrentes n'a lieu qu'aux actions explicites (création/
+ * modification de règle, bootstrap API, node-cron) — jamais à la lecture.
+ */
 export async function listPlannedExpenses(
   userId: string,
   today?: string,
 ): Promise<PlannedExpensesResponse> {
-  // L'application reste correcte même si le cron n'a pas tourné depuis
-  // plusieurs jours : la lecture rattrape les occurrences manquantes.
-  await ensureOccurrencesForUser(userId, today);
-
   const rows = await prisma.plannedExpense.findMany({
     where: { userId },
     orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],

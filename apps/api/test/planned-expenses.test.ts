@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/app.js';
 import { prisma } from '../src/db.js';
+import { runOccurrenceMaintenance } from '../src/scheduler.js';
 import { seedSystemCategories } from '../src/categories/seed.js';
 import {
   generateMonthlyOccurrences,
@@ -634,7 +635,7 @@ describe('Dépense mensuelle récurrente — occurrences', () => {
     }
   });
 
-  it('25. génération IDEMPOTENTE : une lecture de plus ne crée aucun doublon', async () => {
+  it('25. génération IDEMPOTENTE : deux relectures ne créent aucun doublon', async () => {
     const ruleId = await createDayRule(5);
     const before = await listByRule(ruleId);
     const again = await listByRule(ruleId);
@@ -717,7 +718,8 @@ describe('Dépense mensuelle récurrente — occurrences', () => {
     expect(after.filter((o) => o.status === 'CANCELED').length).toBe(
       occurrences.length,
     );
-    // Une nouvelle lecture (qui déclenche la maintenance) n'ajoute rien.
+    // La règle est désactivée : aucune nouvelle lecture ne peut la réactiver
+    // (les GET sont read-only et ne déclenchent plus aucune maintenance).
     expect((await listByRule(ruleId)).filter((o) => o.status === 'PENDING')).toHaveLength(0);
   });
 
@@ -887,3 +889,155 @@ describe('Rappels internes « Payé ? »', () => {
   });
 });
 
+
+describe('Garantie read-only : les GET ne génèrent JAMAIS d’occurrence', () => {
+  const monthKey = localDateString(new Date()).slice(0, 7);
+  const currentMonthFirst = `${monthKey}-01`;
+
+  async function createReadOnlyRule(dayOfMonth = 5): Promise<string> {
+    const res = await postRecurring(tokenA, {
+      amount: '15000',
+      dayOfMonth,
+      startDate: currentMonthFirst,
+      categoryId: categoryId('transport'),
+      description: 'Lecture seule',
+    });
+    expect(res.status).toBe(201);
+    return (res.body.recurringExpense as { id: string }).id;
+  }
+
+  function countRuleRows(ruleId: string): Promise<number> {
+    return prisma.plannedExpense.count({ where: { recurringRuleId: ruleId } });
+  }
+
+  it('54. GET /planned-expenses ne crée aucune occurrence (zéro écriture DB)', async () => {
+    const ruleId = await createReadOnlyRule();
+    expect(await countRuleRows(ruleId)).toBeGreaterThan(0);
+
+    // Simule une API arrêtée plusieurs jours : les occurrences « manquantes »
+    // ne sont volontairement PAS en base.
+    await prisma.plannedExpense.deleteMany({
+      where: { recurringRuleId: ruleId },
+    });
+    expect(await countRuleRows(ruleId)).toBe(0);
+
+    const res = await getPlanned(tokenA);
+    expect(res.status).toBe(200);
+    expect(
+      (res.body.plannedExpenses as PlannedLike[]).filter(
+        (p) => p.recurringRuleId === ruleId,
+      ),
+    ).toHaveLength(0);
+
+    // La lecture n'a régénéré AUCUNE occurrence.
+    expect(await countRuleRows(ruleId)).toBe(0);
+  });
+
+  it('55. GET /reminders ne crée aucune occurrence (zéro écriture DB)', async () => {
+    const ruleId = await createReadOnlyRule();
+    expect(await countRuleRows(ruleId)).toBeGreaterThan(0);
+
+    await prisma.plannedExpense.deleteMany({
+      where: { recurringRuleId: ruleId },
+    });
+    expect(await countRuleRows(ruleId)).toBe(0);
+
+    const res = await getReminders(tokenA);
+    expect(res.status).toBe(200);
+    expect(res.body.overdue).toHaveLength(0);
+    expect(res.body.dueToday).toHaveLength(0);
+    expect(res.body.upcoming).toHaveLength(0);
+
+    // La lecture n'a régénéré AUCUNE occurrence.
+    expect(await countRuleRows(ruleId)).toBe(0);
+  });
+
+  it('56. plusieurs GET consécutifs n’ajoutent NI ne modifient aucune ligne', async () => {
+    const ruleId = await createReadOnlyRule();
+    const beforeCount = await countRuleRows(ruleId);
+    expect(beforeCount).toBeGreaterThan(0);
+
+    async function snapshot(): Promise<string> {
+      const rows = await prisma.plannedExpense.findMany({
+        where: { recurringRuleId: ruleId },
+        select: { id: true, dueDate: true, status: true, amount: true, updatedAt: true },
+        orderBy: { dueDate: 'asc' },
+      });
+      return JSON.stringify(
+        rows.map((row) => ({
+          id: row.id,
+          dueDate: row.dueDate.toISOString(),
+          status: row.status,
+          amount: row.amount.toString(),
+          updatedAt: row.updatedAt.toISOString(),
+        })),
+      );
+    }
+
+    const beforeFingerprint = await snapshot();
+
+    for (let i = 0; i < 3; i += 1) {
+      expect((await getPlanned(tokenA)).status).toBe(200);
+      expect((await getReminders(tokenA)).status).toBe(200);
+    }
+
+    expect(await countRuleRows(ruleId)).toBe(beforeCount);
+    // updatedAt inchangé ⇒ aucune écriture (ni création, ni mise à jour).
+    expect(await snapshot()).toBe(beforeFingerprint);
+  });
+
+  it('57. le rattrapage EXPLICITE (démarrage API / scheduler) régénère les occurrences', async () => {
+    // Règle cible + règle témoin strictement identiques (même génération).
+    const ruleA = await createReadOnlyRule();
+    const ruleB = await createReadOnlyRule();
+    const expected = await countRuleRows(ruleA);
+    expect(expected).toBe(await countRuleRows(ruleB));
+    expect(expected).toBeGreaterThan(0);
+
+    await prisma.plannedExpense.deleteMany({
+      where: { recurringRuleId: ruleA },
+    });
+    expect(await countRuleRows(ruleA)).toBe(0);
+
+    // Bootstrap : point d'entrée appelé au démarrage de l'API ET par le cron.
+    await runOccurrenceMaintenance();
+
+    const rows = await prisma.plannedExpense.findMany({
+      where: { recurringRuleId: ruleA },
+      select: { status: true },
+    });
+    expect(rows.every((row) => row.status === 'PENDING')).toBe(true);
+    // La passe a aussi touché la règle témoin sans rien y ajouter.
+    expect(await countRuleRows(ruleB)).toBe(expected);
+  });
+
+  it('58. rattrapage IDEMPOTENT : passes répétées (bootstrap + scheduler) sans ajout', async () => {
+    const ruleId = await createReadOnlyRule();
+    const control = await createReadOnlyRule();
+    const expected = await countRuleRows(ruleId);
+    expect(expected).toBeGreaterThan(0);
+    expect(await countRuleRows(control)).toBe(expected);
+
+    // Nouvelle coupure : l'API s'arrête à nouveau, des mois passent.
+    await prisma.plannedExpense.deleteMany({
+      where: { recurringRuleId: ruleId },
+    });
+    await runOccurrenceMaintenance();
+    expect(await countRuleRows(control)).toBe(expected);
+
+    // Le cron quotidien (même fonction que le bootstrap) passe deux fois de
+    // plus : aucune ligne supplémentaire, aucun doublon.
+    await runOccurrenceMaintenance();
+    await runOccurrenceMaintenance();
+
+    expect(await countRuleRows(ruleId)).toBe(expected);
+    expect(await countRuleRows(control)).toBe(expected);
+
+    const dues = await prisma.plannedExpense.findMany({
+      where: { recurringRuleId: ruleId },
+      select: { dueDate: true },
+    });
+    const keys = dues.map((row) => row.dueDate.toISOString().slice(0, 10));
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+});

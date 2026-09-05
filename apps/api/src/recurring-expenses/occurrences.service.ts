@@ -11,9 +11,15 @@ import type { RecurringExpenseRule } from '../generated/prisma/client.js';
  * PlannedExpense PENDING, une par mois calendaire. La synchronisation est :
  *  - déterministe (finance-core) ;
  *  - idempotente (aucun doublon : contrainte unique + createMany skipDuplicates) ;
- *  - sans effet financier : rien n'est payé, aucun solde n'est touché ;
- *  - sûre même si le cron n'a pas tourné pendant plusieurs jours (rattrapage
- *    propre des mois manquants lors du prochain appel).
+ *  - sans effet financier : rien n'est payé, aucun solde n'est touché.
+ *
+ * ⚠ JAMAIS en lecture : un GET ne déclenche aucune écriture Prisma. La
+ * génération / le rattrapage des occurrences manquantes n'ont lieu que lors
+ * d'actions EXPLICITES :
+ *  - création d'une règle (dans la même transaction) ;
+ *  - modification d'une règle (dans la même transaction) ;
+ *  - démarrage de l'API (bootstrap) ;
+ *  - job périodique (node-cron, maintenance quotidienne de l'horizon).
  *
  * Règles de synchronisation (invariant « au plus une occurrence par mois ») :
  *  - mois déjà résolu (PAID / CANCELED / SKIPPED) → jamais réécrit ;
@@ -130,25 +136,10 @@ export async function syncRuleOccurrences(
   }
 }
 
-/** Rattrapage de TOUTES les règles actives de l'utilisateur (appel lecture). */
-export async function ensureOccurrencesForUser(
-  userId: string,
-  referenceDate: string = todayLocalISO(),
-): Promise<void> {
-  const rules = await prisma.recurringExpenseRule.findMany({
-    where: { userId, isActive: true },
-  });
-  if (rules.length === 0) {
-    return;
-  }
-  await prisma.$transaction(async (tx) => {
-    for (const rule of rules) {
-      await syncRuleOccurrences(tx, rule, referenceDate);
-    }
-  });
-}
-
-/** Rattrapage global (démarrage API + node-cron). Idempotent. */
+/**
+ * Rattrapage de TOUTES les règles actives (démarrage API + node-cron).
+ * Écriture explicite : ne doit JAMAIS être appelée depuis une route GET.
+ */
 export async function ensureAllActiveOccurrences(
   referenceDate: string = todayLocalISO(),
 ): Promise<void> {

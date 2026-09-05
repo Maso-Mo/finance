@@ -18,7 +18,7 @@ const router = Router();
 const listQuerySchema = z.object({ today: dateOnlySchema.optional() });
 
 // GET /planned-expenses → dépenses futures (ponctuelles + occurrences).
-// Rattrape les occurrences manquantes avant de répondre (idempotent).
+// STRICTEMENT READ-ONLY : aucune écriture, aucune génération en lecture.
 router.get('/', async (req, res) => {
   const query = parseOrThrow(listQuerySchema, req.query);
   res.json(await svc.listPlannedExpenses(req.userId as string, query.today));
