@@ -25,3 +25,39 @@ html.dark {
 body {
   @apply antialiased bg-neutral-100 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100;
 }
+
+/*
+ * Transition globale douce lors d'un changement de thème (clair → sombre et
+ * inversement). La classe `theme-transition` est posée temporairement sur
+ * <html> par ThemeProvider pendant ~300 ms au moment du basculement.
+ * Le sélecteur limite la portée au moment de la transition pour ne pas ralentir
+ * le reste des interactions.
+ */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition:
+    background-color 250ms ease,
+    border-color 250ms ease,
+    color 250ms ease,
+    fill 250ms ease,
+    stroke 250ms ease,
+    box-shadow 250ms ease !important;
+}
+
+/*
+ * prefers-reduced-motion : l'utilisateur demande moins d'animations.
+ * On supprime/écrase fortement les durées de transition et d'animation tout en
+ * gardant le changement d'état instantané (parfaitement compréhensible).
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

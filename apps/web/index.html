@@ -4,6 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Finance</title>
+    <script>
+      // Anti-flash : applique le thème résolu (choix mémorisé sinon thème
+      // système) AVANT le premier rendu React. La classe .dark pilotée sur
+      // <html> est ensuite maintenue par ThemeProvider (src/theme.tsx).
+      (function () {
+        try {
+          var stored = localStorage.getItem('finance.theme-preference');
+          var dark =
+            stored === 'dark'
+              ? true
+              : stored === 'light'
+                ? false
+                : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          document.documentElement.classList.toggle('dark', dark);
+        } catch (e) {
+          /* stockage indisponible : le ThemeProvider suivra le système */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

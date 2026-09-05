@@ -9,7 +9,7 @@ import {
   apiSetCurrency,
   apiUpdateInitialBalance,
 } from '../auth/api';
-import ThemeToggle from '../components/ThemeToggle';
+import { ThemeToggle } from '../components/ThemeToggle';
 import { ACCOUNT_TYPE_LABELS, currencyName, formatMoney } from '../lib/format';
 
 function AccountRow({

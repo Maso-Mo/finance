@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { ApiError } from '../auth/api';
 import { useAuth } from '../auth/AuthContext';
-import ThemeToggle from '../components/ThemeToggle';
+import { ThemeToggle } from '../components/ThemeToggle';
 
 /**
  * Écran minimal de connexion (aucun design financier).
