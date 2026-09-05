@@ -550,7 +550,7 @@ describe('saisie du solde cible (PATCH /accounts/:id)', () => {
       where: { accountId: accountsA.mvola },
     });
     expect(adjustments).toHaveLength(1);
-    expect(adjustments[0].amount.toString()).toBe('-20000');
+    expect(adjustments[0]!.amount.toString()).toBe('-20000');
 
     // L’ajustement n’est NI une dépense NI un revenu.
     const list = await getList(tokenA);

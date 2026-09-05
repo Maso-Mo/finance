@@ -8,7 +8,11 @@ import {
   generateMonthlyOccurrences,
   localDateString,
 } from '@finance/finance-core';
-import type { CategoryPublic } from '@finance/shared-types';
+import {
+  plannedExpenseMutationResponseSchema,
+  type CategoryPublic,
+  type PlannedExpensePublic,
+} from '@finance/shared-types';
 
 const PASSWORD = 'correct-horse-battery-staple';
 const UNKNOWN_UUID = '00000000-0000-4000-8000-000000000000';
@@ -131,6 +135,15 @@ function expectNoSecrets(body: unknown): void {
   expect(JSON.stringify(body)).not.toContain('passwordHash');
 }
 
+/**
+ * Extrait le DTO d'une réponse de mutation en le validant sur le schéma
+ * partagé : le type de `plannedExpense` est alors exact (PlannedExpensePublic),
+ * catégorie incluse — plus aucun accès « à l'aveugle » sur un objet inconnu.
+ */
+function plannedOf(body: unknown): PlannedExpensePublic {
+  return plannedExpenseMutationResponseSchema.parse(body).plannedExpense;
+}
+
 function categoryId(code: string): string {
   return categories.get(code)!.id;
 }
@@ -144,7 +157,7 @@ describe('Dépense future ponctuelle — CRUD', () => {
       description: 'Internet',
     });
     expect(res.status).toBe(201);
-    const plan = res.body.plannedExpense as Record<string, unknown>;
+    const plan = plannedOf(res.body);
     expect(plan.amount).toBe('80000');
     expect(plan.dueDate).toBe('2026-10-05');
     expect(plan.status).toBe('PENDING');
@@ -247,7 +260,7 @@ describe('Dépense future ponctuelle — CRUD', () => {
       description: 'Fibre',
     });
     expect(patched.status).toBe(200);
-    const plan = patched.body.plannedExpense as Record<string, unknown>;
+    const plan = plannedOf(patched.body);
     expect(plan.amount).toBe('90000');
     expect(plan.dueDate).toBe('2026-10-07');
     expect(plan.description).toBe('Fibre');
