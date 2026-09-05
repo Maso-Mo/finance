@@ -1,42 +1,56 @@
 import { Router } from 'express';
-import { transactionCreateSchema } from '@finance/shared-types';
+import { z } from 'zod';
+import { transactionUpdateSchema } from '@finance/shared-types';
 import { parseOrThrow } from '../validation.js';
 import * as svc from './transactions.service.js';
 
 const router = Router();
 
-// Les routes sont montées dans app.ts sous `/accounts` APRÈS `requireAuth` :
+// Les routes sont montées dans app.ts sous `/transactions` APRÈS `requireAuth` :
 // `req.userId` est donc toujours présent ici.
 
-// GET /accounts/:accountId/transactions → journal du compte (compte avec
-// solde dérivé + opérations + totaux revenus/dépenses).
-router.get('/:accountId/transactions', async (req, res) => {
-  const ledger = await svc.getAccountLedger(
-    req.userId as string,
-    req.params.accountId,
-  );
-  res.json(ledger);
+// Pagination simple : page (1-based) + limite raisonnable (max 50).
+const listQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
-// POST /accounts/:accountId/transactions → nouvelle dépense ou revenu (201).
-router.post('/:accountId/transactions', async (req, res) => {
-  const body = parseOrThrow(transactionCreateSchema, req.body);
-  const transaction = await svc.createAccountTransaction(
+// GET /transactions → historique GLOBAL de l'utilisateur (actif, paginé).
+router.get('/', async (req, res) => {
+  const query = parseOrThrow(listQuerySchema, req.query);
+  res.json(
+    await svc.getTransactionLedger(
+      req.userId as string,
+      query.page,
+      query.limit,
+    ),
+  );
+});
+
+// POST /transactions → nouvelle dépense ou revenu (multi-comptes possible).
+router.post('/', async (req, res) => {
+  const body = parseOrThrow(transactionUpdateSchema, req.body);
+  const transaction = await svc.createTransaction(
     req.userId as string,
-    req.params.accountId,
     body,
   );
   res.status(201).json({ transaction });
 });
 
-// DELETE /accounts/:accountId/transactions/:transactionId → suppression
-// (correction d'une saisie erronée).
-router.delete('/:accountId/transactions/:transactionId', async (req, res) => {
-  await svc.deleteAccountTransaction(
+// PATCH /transactions/:id → modification atomique (remplacement complet).
+router.patch('/:id', async (req, res) => {
+  const body = parseOrThrow(transactionUpdateSchema, req.body);
+  const transaction = await svc.updateTransaction(
     req.userId as string,
-    req.params.accountId,
-    req.params.transactionId,
+    req.params.id,
+    body,
   );
+  res.json({ transaction });
+});
+
+// DELETE /transactions/:id → suppression LOGIQUE (deletedAt).
+router.delete('/:id', async (req, res) => {
+  await svc.deleteTransaction(req.userId as string, req.params.id);
   res.status(204).end();
 });
 

@@ -1,16 +1,25 @@
-import { beforeEach, afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/app.js';
 import { prisma } from '../src/db.js';
+import { seedSystemCategories } from '../src/categories/seed.js';
+import type { CategoryPublic } from '@finance/shared-types';
 
 const PASSWORD = 'correct-horse-battery-staple';
 const UNKNOWN_UUID = '00000000-0000-4000-8000-000000000000';
 
+type AccountIds = {
+  cash: string;
+  bank: string;
+  mvola: string;
+  savings: string;
+};
+
 let tokenA = '';
 let tokenB = '';
-let cashAId = '';
-let bankAId = '';
-let cashBId = '';
+let accountsA: AccountIds;
+let accountsB: AccountIds;
+let categories = new Map<string, CategoryPublic>();
 
 async function register(email: string): Promise<string> {
   const res = await request(app)
@@ -20,47 +29,57 @@ async function register(email: string): Promise<string> {
   return res.body.accessToken as string;
 }
 
-async function accountIdOf(token: string, type: string): Promise<string> {
-  const res = await request(app)
-    .get('/accounts')
-    .set('Authorization', `Bearer ${token}`);
+async function idsOf(token: string): Promise<AccountIds> {
+  const res = await request(app).get('/accounts').set('Authorization', `Bearer ${token}`);
   expect(res.status).toBe(200);
-  const account = res.body.accounts.find(
-    (a: { type: string }) => a.type === type,
-  );
-  return (account as { id: string }).id;
+  const by = (type: string) =>
+    (res.body.accounts as { type: string; id: string }[]).find((a) => a.type === type)!.id;
+  return { cash: by('CASH'), bank: by('BANK'), mvola: by('MVOLA'), savings: by('SAVINGS') };
 }
 
-async function createTransaction(
-  token: string,
-  accountId: string,
-  body: Record<string, unknown>,
-) {
-  return request(app)
-    .post(`/accounts/${accountId}/transactions`)
-    .set('Authorization', `Bearer ${token}`)
-    .send(body);
+async function loadCategories(token: string): Promise<Map<string, CategoryPublic>> {
+  const res = await request(app).get('/categories').set('Authorization', `Bearer ${token}`);
+  expect(res.status).toBe(200);
+  return new Map((res.body.categories as CategoryPublic[]).map((c) => [c.code, c]));
 }
 
-async function getLedger(token: string, accountId: string) {
-  return request(app)
-    .get(`/accounts/${accountId}/transactions`)
-    .set('Authorization', `Bearer ${token}`);
+function postTx(token: string, body: Record<string, unknown>) {
+  return request(app).post('/transactions').set('Authorization', `Bearer ${token}`).send(body);
+}
+function patchTx(token: string, id: string, body: Record<string, unknown>) {
+  return request(app).patch(`/transactions/${id}`).set('Authorization', `Bearer ${token}`).send(body);
+}
+function delTx(token: string, id: string) {
+  return request(app).delete(`/transactions/${id}`).set('Authorization', `Bearer ${token}`);
+}
+function getList(token: string, query = '') {
+  return request(app).get(`/transactions${query}`).set('Authorization', `Bearer ${token}`);
+}
+async function getAccount(token: string, type: string) {
+  const res = await request(app).get('/accounts').set('Authorization', `Bearer ${token}`);
+  expect(res.status).toBe(200);
+  return (res.body.accounts as { type: string; balance: string; initialBalance: string }[]).find(
+    (a) => a.type === type,
+  )!;
 }
 
 beforeAll(async () => {
-  await prisma.refreshSession.deleteMany();
+  await prisma.transactionAccountAllocation.deleteMany();
+  await prisma.accountAdjustment.deleteMany();
+  await prisma.transaction.deleteMany();
   await prisma.user.deleteMany();
+  await seedSystemCategories();
 
   tokenA = await register('tx-a@example.com');
   tokenB = await register('tx-b@example.com');
-  cashAId = await accountIdOf(tokenA, 'CASH');
-  bankAId = await accountIdOf(tokenA, 'BANK');
-  cashBId = await accountIdOf(tokenB, 'CASH');
+  accountsA = await idsOf(tokenA);
+  accountsB = await idsOf(tokenB);
+  categories = await loadCategories(tokenA);
 });
 
 beforeEach(async () => {
-  // Base isolée et déterministe : aucun mouvement, soldes de départ à zéro.
+  await prisma.transactionAccountAllocation.deleteMany();
+  await prisma.accountAdjustment.deleteMany();
   await prisma.transaction.deleteMany();
   await prisma.account.updateMany({ data: { initialBalance: '0' } });
 });
@@ -73,248 +92,577 @@ function expectNoSecrets(body: unknown): void {
   expect(JSON.stringify(body)).not.toContain('passwordHash');
 }
 
-describe('GET /accounts/:accountId/transactions', () => {
+describe('GET /categories', () => {
   it('non authentifié → 401', async () => {
-    const res = await request(app).get(`/accounts/${cashAId}/transactions`);
+    const res = await request(app).get('/categories');
     expect(res.status).toBe(401);
   });
 
-  it('compte inconnu → 404', async () => {
-    const res = await getLedger(tokenA, UNKNOWN_UUID);
-    expect(res.status).toBe(404);
-    expectNoSecrets(res.body);
-  });
-
-  it('le compte d’un autre utilisateur est invisible → 404', async () => {
-    const res = await getLedger(tokenA, cashBId);
-    expect(res.status).toBe(404);
-  });
-
-  it('journal vide : aucun mouvement, solde dérivé = solde de départ', async () => {
-    const res = await getLedger(tokenA, cashAId);
+  it('expose uniquement les 10 catégories système', async () => {
+    const res = await request(app).get('/categories').set('Authorization', `Bearer ${tokenA}`);
     expect(res.status).toBe(200);
-    expect(res.body.account.initialBalance).toBe('0');
-    expect(res.body.account.balance).toBe('0');
-    expect(res.body.transactions).toEqual([]);
-    expect(res.body.totals).toEqual({ incomes: '0', expenses: '0' });
+    const list = res.body.categories as CategoryPublic[];
+    const codes = list.map((c) => c.code).sort();
+    expect(codes).toEqual(
+      ['groceries', 'restaurant', 'transport', 'housing', 'internet', 'subscription', 'clothing', 'health', 'leisure', 'other'].sort(),
+    );
+    for (const c of list) {
+      expect(c.isSystem).toBe(true);
+    }
     expectNoSecrets(res.body);
   });
 });
 
-describe('POST /accounts/:accountId/transactions', () => {
-  it('crée une dépense : solde du compte et totaux mis à jour', async () => {
-    const created = await createTransaction(tokenA, cashAId, {
+describe('POST /transactions — dépenses et revenus', () => {
+  it('crée une dépense simple : solde et totaux mis à jour', async () => {
+    const res = await postTx(tokenA, {
       type: 'EXPENSE',
-      amount: '15000',
+      amount: '30000',
       description: 'Courses',
-      occurredAt: '2026-09-04',
+      occurredAt: '2026-09-05',
+      categoryId: categories.get('groceries')!.id,
+      allocations: [{ accountId: accountsA.cash, amount: '30000' }],
     });
-    expect(created.status).toBe(201);
-    expect(created.body.transaction).toMatchObject({
-      accountId: cashAId,
-      type: 'EXPENSE',
-      amount: '15000',
-      description: 'Courses',
-      occurredAt: '2026-09-04',
-    });
-    expect(created.body.transaction.id).toBeTruthy();
-    expectNoSecrets(created.body);
-
-    const ledger = await getLedger(tokenA, cashAId);
-    expect(ledger.body.account.balance).toBe('-15000');
-    expect(ledger.body.totals).toEqual({ incomes: '0', expenses: '15000' });
-    expect(ledger.body.transactions).toHaveLength(1);
+    expect(res.status).toBe(201);
+    const tx = res.body.transaction as Record<string, unknown> & {
+      amount: string;
+      occurredAt: string;
+      category: { name: string } | null;
+      allocations: { accountType: string; amount: string }[];
+    };
+    expect(tx.amount).toBe('30000');
+    expect(tx.occurredAt).toBe('2026-09-05');
+    expect(tx.category?.name).toBe('Courses');
+    expect(tx.allocations).toHaveLength(1);
+    expect(tx.allocations[0]).toEqual({ accountId: accountsA.cash, accountType: 'CASH', amount: '30000' });
+    expectNoSecrets(res.body);
+    expect((await getAccount(tokenA, 'CASH')).balance).toBe('-30000');
+    const list = await getList(tokenA);
+    expect(list.body.transactions).toHaveLength(1);
+    expect(list.body.totals).toEqual({ incomes: '0', expenses: '30000' });
   });
 
-  it('crée un revenu : solde positif et total des revenus', async () => {
-    const created = await createTransaction(tokenA, bankAId, {
+  it('crée un revenu simple sur le compte de réception', async () => {
+    const res = await postTx(tokenA, {
       type: 'INCOME',
       amount: '250000',
       description: 'Salaire',
       occurredAt: '2026-09-01',
+      allocations: [{ accountId: accountsA.mvola, amount: '250000' }],
     });
-    expect(created.status).toBe(201);
-
-    const ledger = await getLedger(tokenA, bankAId);
-    expect(ledger.body.account.balance).toBe('250000');
-    expect(ledger.body.totals).toEqual({ incomes: '250000', expenses: '0' });
+    expect(res.status).toBe(201);
+    expect(res.body.transaction.category).toBeNull();
+    expect((await getAccount(tokenA, 'MVOLA')).balance).toBe('250000');
+    const list = await getList(tokenA);
+    expect(list.body.totals).toEqual({ incomes: '250000', expenses: '0' });
   });
 
-  it('sans description ni date : valeurs par défaut acceptées', async () => {
-    const created = await createTransaction(tokenA, cashAId, {
-      type: 'INCOME',
+  it('multi-source : 600 000 ventilé MVola 400 000 + Cash 200 000 en UNE transaction', async () => {
+    const res = await postTx(tokenA, {
+      type: 'EXPENSE',
+      amount: '600000',
+      description: 'Téléphone',
+      occurredAt: '2026-09-04',
+      categoryId: categories.get('other')!.id,
+      allocations: [
+        { accountId: accountsA.mvola, amount: '400000' },
+        { accountId: accountsA.cash, amount: '200000' },
+      ],
+    });
+    expect(res.status).toBe(201);
+    const tx = res.body.transaction as { allocations: { accountId: string }[] };
+    expect(tx.allocations).toHaveLength(2);
+    const list = await getList(tokenA);
+    expect(list.body.transactions).toHaveLength(1);
+    expect(list.body.totals).toEqual({ incomes: '0', expenses: '600000' });
+    expect((await getAccount(tokenA, 'CASH')).balance).toBe('-200000');
+    expect((await getAccount(tokenA, 'MVOLA')).balance).toBe('-400000');
+  });
+
+  it('somme des allocations incorrecte (550 000 / 600 000) → 400', async () => {
+    const res = await postTx(tokenA, {
+      type: 'EXPENSE',
+      amount: '600000',
+      occurredAt: '2026-09-04',
+      categoryId: categories.get('other')!.id,
+      allocations: [
+        { accountId: accountsA.mvola, amount: '400000' },
+        { accountId: accountsA.cash, amount: '150000' },
+      ],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('un compte qui ne nous appartient pas → 404 (aucune écriture)', async () => {
+    const res = await postTx(tokenA, {
+      type: 'EXPENSE',
       amount: '1000',
-    });
-    expect(created.status).toBe(201);
-    expect(created.body.transaction.description).toBeNull();
-    expect(created.body.transaction.occurredAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  });
-
-  it('le dashboard reflète les soldes dérivés (total hors épargne)', async () => {
-    await createTransaction(tokenA, cashAId, {
-      type: 'EXPENSE',
-      amount: '30000',
-      description: 'Loyer partiel',
-    });
-    await createTransaction(tokenA, bankAId, {
-      type: 'INCOME',
-      amount: '500000',
-      description: 'Virement reçu',
-    });
-    // Épargne : une grosse dépense n’influence pas le Total disponible.
-    const savingsAId = await accountIdOf(tokenA, 'SAVINGS');
-    await createTransaction(tokenA, savingsAId, {
-      type: 'EXPENSE',
-      amount: '999999',
-      description: 'Retrait épargne',
-    });
-
-    const dash = await request(app)
-      .get('/accounts')
-      .set('Authorization', `Bearer ${tokenA}`);
-    expect(dash.status).toBe(200);
-    expect(dash.body.totalAvailable).toBe('470000'); // 500000 − 30000
-
-    const cash = dash.body.accounts.find(
-      (a: { type: string }) => a.type === 'CASH',
-    );
-    const bank = dash.body.accounts.find(
-      (a: { type: string }) => a.type === 'BANK',
-    );
-    const savings = dash.body.accounts.find(
-      (a: { type: string }) => a.type === 'SAVINGS',
-    );
-    expect(cash.balance).toBe('-30000');
-    expect(bank.balance).toBe('500000');
-    expect(savings.balance).toBe('-999999'); // compté pour SON solde…
-  });
-
-  it('le total disponible tient compte du solde de départ + du journal', async () => {
-    await request(app)
-      .patch(`/accounts/${cashAId}`)
-      .set('Authorization', `Bearer ${tokenA}`)
-      .send({ initialBalance: '100000' });
-    await createTransaction(tokenA, cashAId, {
-      type: 'EXPENSE',
-      amount: '40000',
-      description: 'Achat',
-    });
-
-    const ledger = await getLedger(tokenA, cashAId);
-    expect(ledger.body.account.initialBalance).toBe('100000');
-    expect(ledger.body.account.balance).toBe('60000');
-
-    const dash = await request(app)
-      .get('/accounts')
-      .set('Authorization', `Bearer ${tokenA}`);
-    expect(dash.body.totalAvailable).toBe('60000');
-  });
-
-  it('invalide : montants interdits → 400', async () => {
-    for (const amount of ['0', '0.00', '-15000', 'abc', '1.234', 'Infinity', '']) {
-      const res = await createTransaction(tokenA, cashAId, {
-        type: 'EXPENSE',
-        amount,
-      });
-      expect(res.status, `amount=${JSON.stringify(amount)}`).toBe(400);
-    }
-  });
-
-  it('invalide : type, description ou date invalides → 400', async () => {
-    const cases: Record<string, unknown>[] = [
-      { type: 'TRANSFER', amount: '100' },
-      { type: 'EXPENSE', amount: '100', description: '   ' },
-      { type: 'EXPENSE', amount: '100', description: 'x'.repeat(121) },
-      { type: 'EXPENSE', amount: '100', occurredAt: '2026-13-40' },
-      { type: 'EXPENSE', amount: '100', occurredAt: '2026-02-31' },
-      { type: 'EXPENSE', amount: '100', occurredAt: '04/09/2026' },
-    ];
-    for (const body of cases) {
-      const res = await createTransaction(tokenA, cashAId, body);
-      expect(res.status, JSON.stringify(body)).toBe(400);
-    }
-  });
-
-  it('on ne peut pas écrire sur le compte d’un autre utilisateur → 404', async () => {
-    const res = await createTransaction(tokenA, cashBId, {
-      type: 'INCOME',
-      amount: '500',
+      occurredAt: '2026-09-04',
+      categoryId: categories.get('other')!.id,
+      allocations: [{ accountId: accountsB.cash, amount: '1000' }],
     });
     expect(res.status).toBe(404);
   });
+
+  it('un compte inconnu (UUID quelconque) → 404', async () => {
+    const res = await postTx(tokenA, {
+      type: 'EXPENSE',
+      amount: '1000',
+      occurredAt: '2026-09-04',
+      categoryId: categories.get('other')!.id,
+      allocations: [{ accountId: UNKNOWN_UUID, amount: '1000' }],
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('allocation en double sur le même compte → 400', async () => {
+    const res = await postTx(tokenA, {
+      type: 'EXPENSE',
+      amount: '2000',
+      occurredAt: '2026-09-04',
+      categoryId: categories.get('other')!.id,
+      allocations: [
+        { accountId: accountsA.cash, amount: '1000' },
+        { accountId: accountsA.cash, amount: '1000' },
+      ],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('catégorie invalide / inexistante → 400', async () => {
+    const res = await postTx(tokenA, {
+      type: 'EXPENSE',
+      amount: '1000',
+      occurredAt: '2026-09-04',
+      categoryId: UNKNOWN_UUID,
+      allocations: [{ accountId: accountsA.cash, amount: '1000' }],
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
-describe('DELETE /accounts/:accountId/transactions/:transactionId', () => {
-  it('supprime sa propre opération et recale le solde', async () => {
-    const created = await createTransaction(tokenA, cashAId, {
+describe('date inconnue', () => {
+  it('dateUnknown: true sans date → occurredAt null', async () => {
+    const res = await postTx(tokenA, {
+      type: 'EXPENSE',
+      amount: '5000',
+      dateUnknown: true,
+      categoryId: categories.get('other')!.id,
+      allocations: [{ accountId: accountsA.cash, amount: '5000' }],
+    });
+    expect(res.status).toBe(201);
+    expect((res.body.transaction as { occurredAt: string | null }).occurredAt).toBeNull();
+  });
+
+  it('ni date ni dateUnknown → 400 (on ne suppose jamais aujourd’hui)', async () => {
+    const res = await postTx(tokenA, {
+      type: 'EXPENSE',
+      amount: '5000',
+      categoryId: categories.get('other')!.id,
+      allocations: [{ accountId: accountsA.cash, amount: '5000' }],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('date ET dateUnknown ensemble → 400', async () => {
+    const res = await postTx(tokenA, {
+      type: 'EXPENSE',
+      amount: '5000',
+      occurredAt: '2026-09-05',
+      dateUnknown: true,
+      categoryId: categories.get('other')!.id,
+      allocations: [{ accountId: accountsA.cash, amount: '5000' }],
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('compte(s) inconnu(s)', () => {
+  it('accountUnknown: true sans allocation → 201, aucun solde impacté', async () => {
+    const res = await postTx(tokenA, {
+      type: 'EXPENSE',
+      amount: '12000',
+      dateUnknown: true,
+      accountUnknown: true,
+      categoryId: categories.get('other')!.id,
+    });
+    expect(res.status).toBe(201);
+    const tx = res.body.transaction as {
+      accountUnknown: boolean;
+      allocations: unknown[];
+    };
+    expect(tx.accountUnknown).toBe(true);
+    expect(tx.allocations).toEqual([]);
+    expect((await getAccount(tokenA, 'CASH')).balance).toBe('0');
+    expect((await getAccount(tokenA, 'MVOLA')).balance).toBe('0');
+  });
+
+  it('ni allocations ni accountUnknown → 400', async () => {
+    const res = await postTx(tokenA, {
+      type: 'EXPENSE',
+      amount: '12000',
+      dateUnknown: true,
+      categoryId: categories.get('other')!.id,
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('catégorie inconnue (EXPENSE)', () => {
+  it('categoryUnknown: true sans catégorie → 201, catégorie null', async () => {
+    const res = await postTx(tokenA, {
+      type: 'EXPENSE',
+      amount: '8000',
+      dateUnknown: true,
+      categoryUnknown: true,
+      accountUnknown: true,
+    });
+    expect(res.status).toBe(201);
+    const tx = res.body.transaction as { categoryUnknown: boolean; category: unknown };
+    expect(tx.categoryUnknown).toBe(true);
+    expect(tx.category).toBeNull();
+  });
+
+  it('EXPENSE sans catégorie ni categoryUnknown → 400', async () => {
+    const res = await postTx(tokenA, {
+      type: 'EXPENSE',
+      amount: '8000',
+      dateUnknown: true,
+      accountUnknown: true,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('un revenu ne peut pas porter de catégorie → 400', async () => {
+    const res = await postTx(tokenA, {
+      type: 'INCOME',
+      amount: '8000',
+      dateUnknown: true,
+      categoryId: categories.get('other')!.id,
+      accountUnknown: true,
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('PATCH /transactions/:id — modification', () => {
+  async function seedExpense() {
+    const created = await postTx(tokenA, {
+      type: 'EXPENSE',
+      amount: '100000',
+      description: 'Ancienne',
+      occurredAt: '2026-09-01',
+      categoryId: categories.get('groceries')!.id,
+      allocations: [{ accountId: accountsA.cash, amount: '100000' }],
+    });
+    expect(created.status).toBe(201);
+    return (created.body.transaction as { id: string }).id;
+  }
+
+  it('remplace montant, date, catégorie, description et allocations', async () => {
+    const id = await seedExpense();
+    const patch = await patchTx(tokenA, id, {
+      type: 'EXPENSE',
+      amount: '100000',
+      description: 'Nouvelle répartition',
+      occurredAt: '2026-09-08',
+      categoryId: categories.get('transport')!.id,
+      allocations: [
+        { accountId: accountsA.cash, amount: '60000' },
+        { accountId: accountsA.mvola, amount: '40000' },
+      ],
+    });
+    expect(patch.status).toBe(200);
+    const tx = patch.body.transaction as {
+      amount: string;
+      occurredAt: string;
+      description: string;
+      category: { name: string } | null;
+      allocations: { accountId: string; amount: string }[];
+    };
+    expect(tx.amount).toBe('100000');
+    expect(tx.occurredAt).toBe('2026-09-08');
+    expect(tx.description).toBe('Nouvelle répartition');
+    expect(tx.category?.name).toBe('Transport');
+    expect(tx.allocations).toHaveLength(2);
+
+    // Anciennes allocations retirées, seules les nouvelles restent actives.
+    const rows = await prisma.transactionAccountAllocation.findMany({ where: { transactionId: id } });
+    expect(rows).toHaveLength(2);
+    expect((await getAccount(tokenA, 'CASH')).balance).toBe('-60000');
+    expect((await getAccount(tokenA, 'MVOLA')).balance).toBe('-40000');
+    const list = await getList(tokenA);
+    expect(list.body.transactions).toHaveLength(1);
+    expect(list.body.totals).toEqual({ incomes: '0', expenses: '100000' });
+  });
+
+  it('passe de compte connu à compte inconnu : impact retiré', async () => {
+    const id = await seedExpense();
+    const patch = await patchTx(tokenA, id, {
+      type: 'EXPENSE',
+      amount: '100000',
+      dateUnknown: true,
+      accountUnknown: true,
+      categoryId: categories.get('groceries')!.id,
+    });
+    expect(patch.status).toBe(200);
+    expect((patch.body.transaction as { accountUnknown: boolean }).accountUnknown).toBe(true);
+    expect((await getAccount(tokenA, 'CASH')).balance).toBe('0');
+    expect((await prisma.transactionAccountAllocation.count({ where: { transactionId: id } }))).toBe(0);
+  });
+
+  it('passe de compte inconnu à compte connu : le solde se recalcule', async () => {
+    const created = await postTx(tokenA, {
+      type: 'EXPENSE',
+      amount: '25000',
+      dateUnknown: true,
+      accountUnknown: true,
+      categoryId: categories.get('other')!.id,
+    });
+    const id = (created.body.transaction as { id: string }).id;
+    expect((await getAccount(tokenA, 'CASH')).balance).toBe('0');
+
+    const patch = await patchTx(tokenA, id, {
+      type: 'EXPENSE',
+      amount: '25000',
+      dateUnknown: true,
+      categoryId: categories.get('other')!.id,
+      allocations: [{ accountId: accountsA.cash, amount: '25000' }],
+    });
+    expect(patch.status).toBe(200);
+    expect((await getAccount(tokenA, 'CASH')).balance).toBe('-25000');
+  });
+
+  it('une transaction supprimée ne peut plus être modifiée → 409', async () => {
+    const id = await seedExpense();
+    await delTx(tokenA, id);
+    const patch = await patchTx(tokenA, id, {
+      type: 'EXPENSE',
+      amount: '100000',
+      occurredAt: '2026-09-08',
+      categoryId: categories.get('other')!.id,
+      allocations: [{ accountId: accountsA.cash, amount: '100000' }],
+    });
+    expect(patch.status).toBe(409);
+  });
+
+  it('la transaction d’un autre utilisateur est introuvable → 404', async () => {
+    const created = await postTx(tokenB, {
+      type: 'INCOME',
+      amount: '7000',
+      occurredAt: '2026-09-02',
+      allocations: [{ accountId: accountsB.cash, amount: '7000' }],
+    });
+    const id = (created.body.transaction as { id: string }).id;
+    const patch = await patchTx(tokenA, id, {
+      type: 'INCOME',
+      amount: '9999',
+      occurredAt: '2026-09-02',
+      allocations: [{ accountId: accountsA.cash, amount: '9999' }],
+    });
+    expect(patch.status).toBe(404);
+  });
+});
+
+describe('DELETE /transactions/:id — suppression logique', () => {
+  it('marque deletedAt, disparaît de l’historique et n’impacte plus les soldes', async () => {
+    const created = await postTx(tokenA, {
       type: 'EXPENSE',
       amount: '5000',
       description: 'Transport',
       occurredAt: '2026-09-03',
+      categoryId: categories.get('transport')!.id,
+      allocations: [{ accountId: accountsA.cash, amount: '5000' }],
     });
-    const transactionId = created.body.transaction.id as string;
+    const id = (created.body.transaction as { id: string }).id;
+    expect((await getAccount(tokenA, 'CASH')).balance).toBe('-5000');
 
-    const del = await request(app)
-      .delete(`/accounts/${cashAId}/transactions/${transactionId}`)
-      .set('Authorization', `Bearer ${tokenA}`);
+    const del = await delTx(tokenA, id);
     expect(del.status).toBe(204);
 
-    const ledger = await getLedger(tokenA, cashAId);
-    expect(ledger.body.transactions).toEqual([]);
-    expect(ledger.body.account.balance).toBe('0');
-    expect(ledger.body.totals).toEqual({ incomes: '0', expenses: '0' });
+    // La ligne existe toujours en base, avec deletedAt renseigné.
+    const row = await prisma.transaction.findUnique({ where: { id } });
+    expect(row).not.toBeNull();
+    expect((row as { deletedAt: Date | null }).deletedAt).not.toBeNull();
+
+    const list = await getList(tokenA);
+    expect(list.body.transactions).toEqual([]);
+    expect(list.body.totals).toEqual({ incomes: '0', expenses: '0' });
+    expect((await getAccount(tokenA, 'CASH')).balance).toBe('0');
   });
 
-  it('opération déjà supprimée ou inconnue → 404', async () => {
-    const del = await request(app)
-      .delete(`/accounts/${cashAId}/transactions/${UNKNOWN_UUID}`)
-      .set('Authorization', `Bearer ${tokenA}`);
-    expect(del.status).toBe(404);
+  it('transaction inconnue ou déjà supprimée → 404', async () => {
+    const created = await postTx(tokenA, {
+      type: 'INCOME',
+      amount: '1000',
+      occurredAt: '2026-09-03',
+      allocations: [{ accountId: accountsA.cash, amount: '1000' }],
+    });
+    const id = (created.body.transaction as { id: string }).id;
+    await delTx(tokenA, id);
+    expect((await delTx(tokenA, id)).status).toBe(404);
+    expect((await delTx(tokenA, UNKNOWN_UUID)).status).toBe(404);
   });
 
-  it('on ne peut pas supprimer l’opération d’un autre utilisateur → 404', async () => {
-    const created = await createTransaction(tokenB, cashBId, {
+  it('on ne supprime pas la transaction d’un autre utilisateur → 404', async () => {
+    const created = await postTx(tokenB, {
       type: 'INCOME',
       amount: '7000',
+      occurredAt: '2026-09-03',
+      allocations: [{ accountId: accountsB.cash, amount: '7000' }],
     });
-    const transactionId = created.body.transaction.id as string;
-
-    const del = await request(app)
-      .delete(`/accounts/${cashBId}/transactions/${transactionId}`)
-      .set('Authorization', `Bearer ${tokenA}`);
-    expect(del.status).toBe(404);
-
-    // L'opération de B est toujours là.
-    const ledgerB = await getLedger(tokenB, cashBId);
-    expect(ledgerB.body.transactions).toHaveLength(1);
+    const id = (created.body.transaction as { id: string }).id;
+    expect((await delTx(tokenA, id)).status).toBe(404);
+    const list = await getList(tokenB);
+    expect(list.body.transactions).toHaveLength(1);
   });
 });
 
-describe('tri du journal', () => {
-  it('liste triée de la date la plus récente à la plus ancienne', async () => {
-    await createTransaction(tokenA, cashAId, {
+describe('saisie du solde cible (PATCH /accounts/:id)', () => {
+  it('aucun mouvement → met à jour initialBalance directement', async () => {
+    const res = await request(app)
+      .patch(`/accounts/${accountsA.bank}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ targetBalance: '100000' });
+    expect(res.status).toBe(200);
+    expect(res.body.account.initialBalance).toBe('100000');
+    expect(res.body.account.balance).toBe('100000');
+    expect(
+      await prisma.accountAdjustment.count({ where: { accountId: accountsA.bank } }),
+    ).toBe(0);
+  });
+
+  it('au moins un mouvement → crée un AccountAdjustment, jamais une transaction', async () => {
+    await postTx(tokenA, {
+      type: 'INCOME',
+      amount: '200000',
+      occurredAt: '2026-09-03',
+      allocations: [{ accountId: accountsA.mvola, amount: '200000' }],
+    });
+
+    const patch = await request(app)
+      .patch(`/accounts/${accountsA.mvola}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ targetBalance: '180000' });
+    expect(patch.status).toBe(200);
+    expect(patch.body.account.balance).toBe('180000');
+    const adjustments = await prisma.accountAdjustment.findMany({
+      where: { accountId: accountsA.mvola },
+    });
+    expect(adjustments).toHaveLength(1);
+    expect(adjustments[0].amount.toString()).toBe('-20000');
+
+    // L’ajustement n’est NI une dépense NI un revenu.
+    const list = await getList(tokenA);
+    expect(list.body.transactions).toHaveLength(1);
+    expect(list.body.totals).toEqual({ incomes: '200000', expenses: '0' });
+
+    const patch2 = await request(app)
+      .patch(`/accounts/${accountsA.mvola}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ targetBalance: '210000' });
+    expect(patch2.status).toBe(200);
+    expect(patch2.body.account.balance).toBe('210000');
+    expect(
+      await prisma.accountAdjustment.count({ where: { accountId: accountsA.mvola } }),
+    ).toBe(2);
+  });
+
+  it('compte d’un autre utilisateur → 404', async () => {
+    const res = await request(app)
+      .patch(`/accounts/${accountsB.cash}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ targetBalance: '100' });
+    expect(res.status).toBe(404);
+  });
+});
+
+it('Total disponible : l’épargne (SAVINGS) est exclue', async () => {
+  await postTx(tokenA, {
+    type: 'INCOME',
+    amount: '500000',
+    occurredAt: '2026-09-03',
+    allocations: [{ accountId: accountsA.savings, amount: '500000' }],
+  });
+  expect((await getAccount(tokenA, 'SAVINGS')).balance).toBe('500000');
+  const dash = await request(app).get('/accounts').set('Authorization', `Bearer ${tokenA}`);
+  expect(dash.body.totalAvailable).toBe('0');
+});
+
+describe('historique global', () => {
+  it('ne montre que ses propres transactions', async () => {
+    await postTx(tokenB, {
+      type: 'INCOME',
+      amount: '7000',
+      occurredAt: '2026-09-03',
+      allocations: [{ accountId: accountsB.cash, amount: '7000' }],
+    });
+    const listA = await getList(tokenA);
+    expect(listA.status).toBe(200);
+    expect(listA.body.transactions).toEqual([]);
+    const listB = await getList(tokenB);
+    expect(listB.body.transactions).toHaveLength(1);
+    expectNoSecrets(listB.body);
+  });
+
+  it('tri stable : dates décroissantes, date inconnue en dernier', async () => {
+    await postTx(tokenA, {
       type: 'EXPENSE',
       amount: '100',
       description: 'Ancien',
       occurredAt: '2026-08-20',
+      categoryId: categories.get('other')!.id,
+      allocations: [{ accountId: accountsA.cash, amount: '100' }],
     });
-    await createTransaction(tokenA, cashAId, {
+    await postTx(tokenA, {
       type: 'INCOME',
       amount: '200',
       description: 'Récent',
-      occurredAt: '2026-09-05',
+      occurredAt: '2026-09-10',
+      allocations: [{ accountId: accountsA.cash, amount: '200' }],
     });
-    await createTransaction(tokenA, cashAId, {
+    await postTx(tokenA, {
       type: 'EXPENSE',
       amount: '300',
+      description: 'Inconnue',
+      dateUnknown: true,
+      categoryId: categories.get('other')!.id,
+      allocations: [{ accountId: accountsA.cash, amount: '300' }],
+    });
+    await postTx(tokenA, {
+      type: 'EXPENSE',
+      amount: '50',
       description: 'Moyen',
       occurredAt: '2026-09-01',
+      categoryId: categories.get('other')!.id,
+      allocations: [{ accountId: accountsA.cash, amount: '50' }],
     });
-
-    const ledger = await getLedger(tokenA, cashAId);
-    const descriptions = ledger.body.transactions.map(
-      (t: { description: string }) => t.description,
+    const list = await getList(tokenA);
+    const descriptions = (list.body.transactions as { description: string | null }[]).map(
+      (t) => t.description,
     );
-    expect(descriptions).toEqual(['Récent', 'Moyen', 'Ancien']);
+    expect(descriptions).toEqual(['Récent', 'Moyen', 'Ancien', 'Inconnue']);
+  });
+
+  it('pagination simple et hasMore', async () => {
+    for (let i = 0; i < 25; i += 1) {
+      await postTx(tokenA, {
+        type: 'EXPENSE',
+        amount: '100',
+        dateUnknown: true,
+        categoryId: categories.get('other')!.id,
+        allocations: [{ accountId: accountsA.cash, amount: '100' }],
+      });
+    }
+    const page1 = await getList(tokenA, '?page=1&limit=10');
+    expect(page1.status).toBe(200);
+    expect(page1.body.transactions).toHaveLength(10);
+    expect(page1.body.hasMore).toBe(true);
+    expect(page1.body.totals).toEqual({ incomes: '0', expenses: '2500' });
+    const page3 = await getList(tokenA, '?page=3&limit=10');
+    expect(page3.body.transactions).toHaveLength(5);
+    expect(page3.body.hasMore).toBe(false);
+    const bad = await getList(tokenA, '?limit=999');
+    expect(bad.status).toBe(400);
   });
 });

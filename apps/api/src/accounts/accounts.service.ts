@@ -1,26 +1,30 @@
 import { prisma } from '../db.js';
 import { ApiError } from '../http-error.js';
 import {
+  currentBalance,
   sumAvailableBalance,
   toMoney,
-  type BalanceEntry,
   type Money,
 } from '@finance/finance-core';
 import type { AccountPublic, Currency } from '@finance/shared-types';
-import { getAccountNetFlows } from '../transactions/transactions.service.js';
 
 /**
  * Service des comptes financiers V1.
  * Tous les accès sont filtrés par userId authentifié : un utilisateur ne peut
  * jamais lire/modifier un compte qui ne lui appartient pas.
  *
- * Solde courant dérivé (étape 5) : solde de départ (initialBalance, saisi à la
- * main) + revenus − dépenses du journal de transactions. Le total disponible
- * est ensuite calculé sur ces soldes dérivés.
+ * Solde courant DÉRIVÉ (jamais stocké) :
+ *   initialBalance + revenus actifs alloués − dépenses actives allouées
+ *   + ajustements de solde (AccountAdjustment).
  *
- * Représentation monétaire exacte : le Decimal Prisma est converti en chaîne
- * à la frontière (jamais de number flottant), puis les calculs de total
- * utilisent finance-core (decimal.js).
+ * ⚠ Décision backend : quand l'utilisateur déclare « je veux que le solde
+ * connu devienne X », le serveur choisit :
+ *   - aucun mouvement actif sur le compte → mise à jour d'initialBalance ;
+ *   - au moins un mouvement → création d'un AccountAdjustment (correction),
+ *     sans jamais toucher l'historique des transactions.
+ *
+ * Représentation monétaire exacte : Decimal Prisma → chaîne à la frontière,
+ * puis finance-core (decimal.js) pour les calculs (jamais de flottant).
  */
 
 type AccountRow = {
@@ -40,15 +44,15 @@ function toPublic(account: AccountRow, balance: Money): AccountPublic {
   };
 }
 
-async function requireUserCurrency(userId: string): Promise<Currency> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { currency: true },
-  });
-  if (!user) {
-    throw new ApiError(401, 'User not found.');
+/** Convertit une agrégation groupBy (par compte) en Map compte → Decimal. */
+function indexSum(
+  groups: { accountId: string; sum: string | null }[],
+): Map<string, Money> {
+  const map = new Map<string, Money>();
+  for (const group of groups) {
+    map.set(group.accountId, toMoney(group.sum ?? '0'));
   }
-  return user.currency;
+  return map;
 }
 
 export async function getDashboard(userId: string): Promise<{
@@ -56,56 +60,144 @@ export async function getDashboard(userId: string): Promise<{
   accounts: AccountPublic[];
   totalAvailable: string;
 }> {
-  const currency = await requireUserCurrency(userId);
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { currency: true },
+  });
+  if (!user) {
+    throw new ApiError(401, 'User not found.');
+  }
+
   const rows = await prisma.account.findMany({
     where: { userId },
     orderBy: { type: 'asc' },
   });
 
-  // Flux net (revenus − dépenses) par compte, calculé en une requête agrégée.
-  const flows = await getAccountNetFlows(userId);
+  // Sommes exactes en base (NUMERIC), par compte et par nature : revenus actifs,
+  // dépenses actives, ajustements (déjà signés).
+  const [incomeGroups, expenseGroups, adjustmentGroups] = await Promise.all([
+    prisma.transactionAccountAllocation.groupBy({
+      by: ['accountId'],
+      where: { transaction: { userId, type: 'INCOME', deletedAt: null } },
+      _sum: { amount: true },
+    }),
+    prisma.transactionAccountAllocation.groupBy({
+      by: ['accountId'],
+      where: { transaction: { userId, type: 'EXPENSE', deletedAt: null } },
+      _sum: { amount: true },
+    }),
+    prisma.accountAdjustment.groupBy({
+      by: ['accountId'],
+      where: { userId },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const incomes = indexSum(
+    incomeGroups.map((g) => ({
+      accountId: g.accountId,
+      sum: g._sum.amount?.toString() ?? '0',
+    })),
+  );
+  const expenses = indexSum(
+    expenseGroups.map((g) => ({
+      accountId: g.accountId,
+      sum: g._sum.amount?.toString() ?? '0',
+    })),
+  );
+  const adjustments = indexSum(
+    adjustmentGroups.map((g) => ({
+      accountId: g.accountId,
+      sum: g._sum.amount?.toString() ?? '0',
+    })),
+  );
 
   const accounts: AccountPublic[] = rows.map((row) => {
     const starting = toMoney(row.initialBalance.toString());
-    const flow = flows.get(row.id);
-    return toPublic(row, flow ? starting.plus(flow) : starting);
+    const net = (incomes.get(row.id) ?? toMoney('0')).minus(
+      expenses.get(row.id) ?? toMoney('0'),
+    );
+    const balance = currentBalance(
+      starting,
+      net,
+      adjustments.get(row.id) ?? toMoney('0'),
+    );
+    return toPublic(row, balance);
   });
 
-  const entries: BalanceEntry[] = accounts.map((account) => ({
-    type: account.type,
-    balance: account.balance,
-  }));
-  const total = sumAvailableBalance(entries);
+  const totalAvailable = sumAvailableBalance(
+    accounts.map((account) => ({
+      type: account.type,
+      balance: account.balance,
+    })),
+  );
 
   return {
-    currency,
+    currency: user.currency as Currency,
     accounts,
-    totalAvailable: total.toString(),
+    totalAvailable: totalAvailable.toString(),
   };
 }
 
-export async function updateInitialBalance(
+/**
+ * « Je veux que le solde connu de ce compte devienne `targetBalance`. »
+ * Le backend décide initialBalance vs AccountAdjustment (voir en-tête).
+ */
+export async function setAccountTargetBalance(
   userId: string,
   accountId: string,
-  value: string,
+  targetBalance: string,
 ): Promise<{ account: AccountPublic; totalAvailable: string }> {
-  const result = await prisma.account.updateMany({
+  const account = await prisma.account.findFirst({
     where: { id: accountId, userId },
-    data: { initialBalance: value },
+    select: { id: true },
   });
-  if (result.count === 0) {
-    // Ni trouvé ni autorisé (on ne divulgue pas l'existence d'un compte tiers).
+  if (!account) {
+    // Ni trouvé ni autorisé : réponse générique sans fuite d'existence.
     throw new ApiError(404, 'Account not found.');
   }
 
-  const dashboard = await getDashboard(userId);
-  const account = dashboard.accounts.find((a) => a.id === accountId);
-  return { account: account as AccountPublic, totalAvailable: dashboard.totalAvailable };
+  const [activeAllocations, adjustmentCount] = await Promise.all([
+    prisma.transactionAccountAllocation.count({
+      where: { accountId, transaction: { userId, deletedAt: null } },
+    }),
+    prisma.accountAdjustment.count({ where: { accountId, userId } }),
+  ]);
+  const hasMovement = activeAllocations > 0 || adjustmentCount > 0;
+
+  if (!hasMovement) {
+    // Aucun mouvement : le solde de départ reste modifiable directement.
+    await prisma.account.update({
+      where: { id: accountId },
+      data: { initialBalance: targetBalance },
+    });
+  } else {
+    // Au moins un mouvement : on enregistre une CORRECTION de solde (jamais
+    // une transaction, jamais une retouche d'historique).
+    const dashboard = await getDashboard(userId);
+    const current = dashboard.accounts.find((a) => a.id === accountId);
+    if (!current) {
+      throw new ApiError(404, 'Account not found.');
+    }
+    const delta = toMoney(targetBalance).minus(toMoney(current.balance));
+    if (!delta.isZero()) {
+      await prisma.accountAdjustment.create({
+        data: { userId, accountId, amount: delta.toString() },
+      });
+    }
+  }
+
+  const fresh = await getDashboard(userId);
+  const accountOut = fresh.accounts.find((a) => a.id === accountId);
+  return {
+    account: accountOut as AccountPublic,
+    totalAvailable: fresh.totalAvailable,
+  };
 }
 
 /**
  * Change la devise principale de l'espace utilisateur et l'applique de façon
- * cohérente à tous ses comptes standards (V1 : aucun solde significatif).
+ * cohérente à tous ses comptes standards (V1).
  */
 export async function updateUserCurrency(
   userId: string,
@@ -116,3 +208,4 @@ export async function updateUserCurrency(
     prisma.account.updateMany({ where: { userId }, data: { currency } }),
   ]);
 }
+

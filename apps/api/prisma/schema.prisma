@@ -1,7 +1,29 @@
 // Schéma Prisma — @finance/api
 //
-// Étape 5 : transactions (dépenses/revenus). Le solde affiché d'un compte est
-// dérivé : solde de départ saisi + revenus − dépenses (voir finance-core).
+// Étape 5 (modèle corrigé) : journal financier global. Une transaction (dépense
+// ou revenu) appartient à un UTILISATEUR, pas à un compte : elle est ventilée
+// en zéro, une ou plusieurs ALLOCATIONS (TransactionAccountAllocation).
+//
+// Règles métier :
+//  - montants TOUJOURS positifs en stockage (le sens est porté par `type`) ;
+//  - allocations connues ⇒ Σ allocations = montant exactement (decimal.js) ;
+//  - « compte inconnu » est un choix EXPLICITE de l'utilisateur (accountUnknown)
+//    : aucune allocation, aucun impact sur les soldes ;
+//  - la date d'occurrence est optionnelle (`occurredAt` nullable) : date saisie
+//    OU « je ne sais plus » explicite (dateUnknown). On ne suppose JAMAIS
+//    aujourd'hui automatiquement ;
+//  - une EXPENSE a une catégorie connue OU « je ne sais plus » explicite
+//    (categoryUnknown). Les revenus n'ont pas de catégorie de dépense ;
+//  - suppression LOGIQUE (deletedAt) : une opération supprimée disparaît de
+//    l'historique et n'impacte plus les soldes ;
+//  - solde courant dérivé (jamais stocké) :
+//      initialBalance + revenus actifs − dépenses actives + ajustements
+//    cf. finance-core/ledger.
+//
+// ⚠ TRANSFERTS — à NE PAS modéliser comme « dépense source + revenu
+// destination » (cela fausserait totaux, statistiques, budgets). Un transfert
+// sera plus tard un type d'opération spécifique (source, destination, frais).
+// Cette étape n'implémente PAS les transferts.
 //
 // Conventions Prisma 7 :
 //  - générateur `prisma-client` (TypeScript) avec un output explicite vers
@@ -48,15 +70,17 @@ enum TransactionType {
 /// Utilisateur de l'application (authentification email + mot de passe +
 /// devise principale).
 model User {
-  id              String           @id @default(uuid()) @db.Uuid
-  email           String           @unique
-  passwordHash    String
-  currency        Currency         @default(MGA)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  refreshSessions RefreshSession[]
-  accounts        Account[]
-  transactions    Transaction[]
+  id                 String              @id @default(uuid()) @db.Uuid
+  email              String              @unique
+  passwordHash       String
+  currency           Currency            @default(MGA)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  refreshSessions    RefreshSession[]
+  accounts           Account[]
+  transactions       Transaction[]
+  categories         Category[]
+  accountAdjustments AccountAdjustment[]
 
   @@map("users")
 }
@@ -76,23 +100,51 @@ model RefreshSession {
   @@map("refresh_sessions")
 }
 
+/// Catégorie d'une dépense.
+///
+/// Cette étape expose UNIQUEMENT les catégories système (`isSystem = true`,
+/// `userId = null`), initialisées par un seed explicite et idempotent
+/// (apps/api/prisma/seed.ts — jamais à la création d'un GET). `userId` nullable
+/// prépare les futures catégories personnalisées. `code` est un slug stable
+/// indépendant de la langue affichée (`name`).
+model Category {
+  id           String        @id @default(uuid()) @db.Uuid
+  code         String        @unique
+  name         String
+  isSystem     Boolean       @default(false)
+  userId       String?       @db.Uuid
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([userId])
+  @@map("categories")
+}
+
 /// Compte financier manuel V1.
 ///
 /// `initialBalance` = argent déclaré par l'utilisateur à la configuration
 /// (le « solde de départ », saisi à la main). Le SOLDE COURANT affiché est
-/// dérivé en lecture : solde de départ + revenus − dépenses (transactions).
+/// dérivé en lecture : initialBalance + revenus actifs − dépenses actives
+/// (allocations du journal) + ajustements de solde (AccountAdjustment).
+///
+/// Dès qu'un compte possède au moins un mouvement (transaction active ou
+/// ajustement), on ne modifie PLUS initialBalance : la saisie d'un solde
+/// cible crée un AccountAdjustment (décision prise côté backend).
 ///
 /// Montants stockés en NUMERIC (Decimal Prisma), jamais en flottant.
 model Account {
-  id             String        @id @default(uuid()) @db.Uuid
-  userId         String        @db.Uuid
+  id             String                         @id @default(uuid()) @db.Uuid
+  userId         String                         @db.Uuid
   type           AccountType
   currency       Currency
-  initialBalance Decimal       @default(0) @db.Decimal(20, 2)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions   Transaction[]
+  initialBalance Decimal                        @default(0) @db.Decimal(20, 2)
+  createdAt      DateTime                       @default(now())
+  updatedAt      DateTime                       @updatedAt
+  user           User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  allocations    TransactionAccountAllocation[]
+  adjustments    AccountAdjustment[]
 
   // V1 : au plus un compte de chaque type par utilisateur.
   @@unique([userId, type])
@@ -100,28 +152,82 @@ model Account {
   @@map("accounts")
 }
 
-/// Opération (dépense ou revenu) rattachée à un compte.
+/// Opération financière (dépense ou revenu) du journal global d'un utilisateur.
 ///
-/// `amount` est stocké POSITIF quel que soit le sens (`type` porte le sens).
-/// `occurredAt` est la date saisie par l'utilisateur (jour de l'opération) ;
-/// la composante horaire reste neutre (stockée à midi UTC à la création depuis
-/// une date "YYYY-MM-DD"), ce qui évite tout décalage de fuseau horaire.
+/// Une transaction N'APPARTIENT PAS à un seul compte : sa répartition est
+/// portée par TransactionAccountAllocation. `amount` est stocké POSITIF quel
+/// que soit le sens (`type` porte le sens).
+///
+/// États « je ne sais plus » EXPLICITES (jamais un simple champ vide) :
+///  - `accountUnknown`  : compte(s) inconnu(s) → aucune allocation ;
+///  - `categoryUnknown` : catégorie inconnue (EXPENSE) → categoryId null ;
+///  - `occurredAt null` : date inconnue (l'utilisateur a coché dateUnknown).
+///
+/// `occurredAt` est la date saisie (jour) ; composante horaire neutre (midi
+/// UTC), ce qui évite tout décalage de fuseau. `deletedAt` = suppression
+/// logique : la ligne reste en base mais disparaît de l'historique et des
+/// soldes.
 model Transaction {
-  id          String          @id @default(uuid()) @db.Uuid
-  userId      String          @db.Uuid
-  accountId   String          @db.Uuid
-  type        TransactionType
-  amount      Decimal         @db.Decimal(20, 2)
-  description String?
-  occurredAt  DateTime
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account     Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  id              String                         @id @default(uuid()) @db.Uuid
+  userId          String                         @db.Uuid
+  type            TransactionType
+  amount          Decimal                        @db.Decimal(20, 2)
+  description     String?
+  categoryId      String?                        @db.Uuid
+  categoryUnknown Boolean                        @default(false)
+  accountUnknown  Boolean                        @default(false)
+  occurredAt      DateTime?                      @db.Timestamp(3)
+  deletedAt       DateTime?                      @db.Timestamp(3)
+  createdAt       DateTime                       @default(now())
+  updatedAt       DateTime                       @updatedAt
+  user            User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category        Category?                      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  allocations     TransactionAccountAllocation[]
 
-  // userId est redondant avec accountId mais permet des requêtes autorisées
-  // simples et directes (scoping par propriétaire sans jointure).
+  // userId redondant avec les allocations mais permet un scoping autorisé
+  // simple et direct (requêtes par propriétaire sans jointure).
   @@index([userId, occurredAt])
-  @@index([accountId, occurredAt])
+  @@index([userId, createdAt])
+  @@index([userId, deletedAt])
   @@map("transactions")
+}
+
+/// Ventilation d'une transaction sur un compte (zéro à plusieurs lignes).
+///
+/// « Somme des allocations = montant de la transaction » EXACTEMENT lorsque le
+/// ou les comptes sont connus (vérifié en decimal.js, cf. finance-core).
+/// Une transaction multi-comptes reste UNE SEULE transaction en historique.
+model TransactionAccountAllocation {
+  id            String      @id @default(uuid()) @db.Uuid
+  transactionId String      @db.Uuid
+  accountId     String      @db.Uuid
+  amount        Decimal     @db.Decimal(20, 2)
+  createdAt     DateTime    @default(now())
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  account       Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([transactionId, accountId])
+  @@index([accountId])
+  @@index([transactionId])
+  @@map("transaction_account_allocations")
+}
+
+/// Ajustement manuel de solde (CORRECTION, ni dépense ni revenu).
+///
+/// Quand l'utilisateur déclare un solde réel différent du solde calculé, on
+/// enregistre ici la différence (montant SIGNE : + ajoute, − retire). On ne
+/// modifie JAMAIS l'historique des transactions, et ces ajustements ne
+/// paraissent ni dans les dépenses ni dans les revenus.
+model AccountAdjustment {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  accountId String   @db.Uuid
+  amount    Decimal  @db.Decimal(20, 2)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([accountId])
+  @@map("account_adjustments")
 }

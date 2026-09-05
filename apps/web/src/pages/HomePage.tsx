@@ -7,7 +7,7 @@ import { useAuth } from '../auth/AuthContext';
 import {
   apiGetAccounts,
   apiSetCurrency,
-  apiUpdateInitialBalance,
+  apiSetTargetBalance,
 } from '../auth/api';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { ACCOUNT_TYPE_LABELS, currencyName, formatMoney } from '../lib/format';
@@ -22,10 +22,12 @@ function AccountRow({
   onUpdate: (accountId: string, value: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(account.initialBalance);
+  // Valeur initiale du champ = solde COURANT connu (le backend décidera s'il
+  // faut corriger le solde de départ ou créer un ajustement).
+  const [value, setValue] = useState(account.balance);
 
   function startEditing() {
-    setValue(account.initialBalance);
+    setValue(account.balance);
     setEditing(true);
   }
 
@@ -64,10 +66,10 @@ function AccountRow({
             <button
               type="button"
               onClick={startEditing}
-              title="Modifier le solde de départ saisi à la main"
+              title="Déclarer le solde réel : corrige le solde de départ (si aucun mouvement) ou crée un ajustement"
               className="rounded-lg border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
             >
-              Modifier
+              Corriger le solde
             </button>
           </div>
         ) : (
@@ -113,7 +115,7 @@ export default function HomePage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, balance }: { id: string; balance: string }) =>
-      apiUpdateInitialBalance(id, balance),
+      apiSetTargetBalance(id, balance),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
@@ -234,10 +236,12 @@ export default function HomePage() {
         </section>
 
         <p className="mt-4 text-xs text-neutral-500 dark:text-neutral-500">
-          Chaque solde affiché = solde de départ saisi à la main + revenus −
-          dépenses du journal. L’épargne apparaît dans Détails mais n’est pas
-          incluse dans le Total disponible. Enregistrez vos dépenses et revenus
-          dans la page Transactions.
+          Chaque solde affiché est dérivé : solde de départ + revenus − dépenses
+          (journal) + ajustements. L’épargne apparaît dans Détails mais n’est
+          pas incluse dans le Total disponible. « Corriger le solde » ajuste le
+          solde de départ tant qu’aucun mouvement n’existe ; ensuite il crée un
+          ajustement (jamais une fausse dépense/revenu). Enregistrez vos
+          opérations dans la page Transactions.
         </p>
       </div>
     </main>

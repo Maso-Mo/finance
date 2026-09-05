@@ -56,10 +56,15 @@ export const accountPublicSchema = z.object({
 });
 export type AccountPublic = z.infer<typeof accountPublicSchema>;
 
-export const accountBalanceUpdateSchema = z.object({
-  initialBalance: amountInputSchema,
+export const accountTargetBalanceSchema = z.object({
+  // « Je veux que le solde connu de ce compte devienne X ». Le backend décide :
+  //  - aucun mouvement actif  → il met à jour initialBalance ;
+  //  - au moins un mouvement  → il crée un AccountAdjustment (correction).
+  targetBalance: amountInputSchema,
 });
-export type AccountBalanceUpdate = z.infer<typeof accountBalanceUpdateSchema>;
+export type AccountTargetBalanceUpdate = z.infer<
+  typeof accountTargetBalanceSchema
+>;
 
 export const currencyPreferenceSchema = z.object({
   currency: currencySchema,

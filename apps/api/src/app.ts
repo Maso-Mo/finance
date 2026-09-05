@@ -13,6 +13,7 @@ import { parseOrThrow } from './validation.js';
 import { currencyPreferenceSchema } from '@finance/shared-types';
 import { accountsRouter } from './accounts/accounts.routes.js';
 import { updateUserCurrency } from './accounts/accounts.service.js';
+import { categoriesRouter } from './categories/categories.routes.js';
 import { transactionsRouter } from './transactions/transactions.routes.js';
 
 /**
@@ -66,9 +67,12 @@ app.use('/auth', authRouter);
 // Comptes financiers (protégés par access JWT).
 app.use('/accounts', requireAuth, accountsRouter);
 
-// Journal de transactions d'un compte (protégé) : GET/POST un journal,
-// DELETE une opération.
-app.use('/accounts', requireAuth, transactionsRouter);
+// Catégories système (protégées).
+app.use('/categories', requireAuth, categoriesRouter);
+
+// Journal GLOBAL de transactions de l'utilisateur (protégé) : liste paginée,
+// création multi-comptes, modification atomique, suppression logique.
+app.use('/transactions', requireAuth, transactionsRouter);
 
 // Préférence de devise principale de l'utilisateur (protégée).
 app.patch('/me/preferences', requireAuth, async (req, res) => {

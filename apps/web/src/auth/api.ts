@@ -1,12 +1,13 @@
 import type {
-  AccountLedgerResponse,
   AccountUpdateResponse,
   AuthResponse,
+  CategoriesResponse,
   Currency,
   DashboardResponse,
   PublicUser,
-  TransactionCreate,
-  TransactionCreatedResponse,
+  TransactionMutationResponse,
+  TransactionsResponse,
+  TransactionUpsert,
 } from '@finance/shared-types';
 
 /**
@@ -151,13 +152,14 @@ export async function apiGetAccounts(): Promise<DashboardResponse> {
   return request<DashboardResponse>('/accounts');
 }
 
-export async function apiUpdateInitialBalance(
+/** « Je veux que le solde connu devienne targetBalance » (backend décide). */
+export async function apiSetTargetBalance(
   accountId: string,
-  initialBalance: string,
+  targetBalance: string,
 ): Promise<AccountUpdateResponse> {
   return request<AccountUpdateResponse>(`/accounts/${accountId}`, {
     method: 'PATCH',
-    body: { initialBalance },
+    body: { targetBalance },
   });
 }
 
@@ -168,34 +170,50 @@ export async function apiSetCurrency(currency: Currency): Promise<void> {
   });
 }
 
-// --- Journal de transactions d'un compte ---
+// --- Catégories système ---
 
-/** Journal complet d'un compte : compte (solde dérivé) + opérations + totaux. */
-export async function apiGetAccountLedger(
-  accountId: string,
-): Promise<AccountLedgerResponse> {
-  return request<AccountLedgerResponse>(
-    `/accounts/${accountId}/transactions`,
+export async function apiGetCategories(): Promise<CategoriesResponse> {
+  return request<CategoriesResponse>('/categories');
+}
+
+// --- Journal GLOBAL de transactions ---
+
+/** Historique global paginé (transactions actives uniquement). */
+export async function apiGetTransactions(
+  page = 1,
+  limit = 20,
+): Promise<TransactionsResponse> {
+  return request<TransactionsResponse>(
+    `/transactions?page=${page}&limit=${limit}`,
   );
 }
 
-/** Enregistre une dépense ou un revenu sur le compte (dépense/revenu). */
+/** Crée une dépense ou un revenu (allocations multi-comptes possibles). */
 export async function apiCreateTransaction(
-  accountId: string,
-  input: TransactionCreate,
-): Promise<TransactionCreatedResponse> {
-  return request<TransactionCreatedResponse>(
-    `/accounts/${accountId}/transactions`,
-    { method: 'POST', body: input },
+  input: TransactionUpsert,
+): Promise<TransactionMutationResponse> {
+  return request<TransactionMutationResponse>('/transactions', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+/** Modifie une transaction (remplacement atomique complet). */
+export async function apiUpdateTransaction(
+  transactionId: string,
+  input: TransactionUpsert,
+): Promise<TransactionMutationResponse> {
+  return request<TransactionMutationResponse>(
+    `/transactions/${transactionId}`,
+    { method: 'PATCH', body: input },
   );
 }
 
-/** Supprime une opération (correction d'une saisie erronée). */
+/** Supprime logiquement une transaction (disparaît de l’historique). */
 export async function apiDeleteTransaction(
-  accountId: string,
   transactionId: string,
 ): Promise<void> {
-  await request<void>(`/accounts/${accountId}/transactions/${transactionId}`, {
+  await request<void>(`/transactions/${transactionId}`, {
     method: 'DELETE',
   });
 }

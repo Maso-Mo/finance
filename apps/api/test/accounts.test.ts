@@ -97,11 +97,11 @@ describe('GET /accounts', () => {
 });
 
 describe('PATCH /accounts/:id', () => {
-  it('met à jour son propre compte et recale le total disponible', async () => {
+  it('déclare un solde cible sur un compte sans mouvement (initialBalance)', async () => {
     const patch = await request(app)
       .patch(`/accounts/${accountACashId}`)
       .set('Authorization', `Bearer ${tokenA}`)
-      .send({ initialBalance: '150000' });
+      .send({ targetBalance: '150000' });
     expect(patch.status).toBe(200);
     expect(patch.body.account.initialBalance).toBe('150000');
     expect(patch.body.account.type).toBe('CASH');
@@ -113,7 +113,7 @@ describe('PATCH /accounts/:id', () => {
     const patchBank = await request(app)
       .patch(`/accounts/${accountABankId}`)
       .set('Authorization', `Bearer ${tokenA}`)
-      .send({ initialBalance: '200000' });
+      .send({ targetBalance: '200000' });
     expect(patchBank.status).toBe(200);
     // CASH 150000 + BANK 200000 = 350000 (pas d’épargne renseignée).
     expect(patchBank.body.totalAvailable).toBe('350000');
@@ -123,7 +123,7 @@ describe('PATCH /accounts/:id', () => {
     const res = await request(app)
       .patch(`/accounts/${accountACashId}`)
       .set('Authorization', `Bearer ${tokenB}`)
-      .send({ initialBalance: '999999' });
+      .send({ targetBalance: '999999' });
     expect(res.status).toBe(404);
     expectNoSecrets(res.body);
 
@@ -142,7 +142,7 @@ describe('PATCH /accounts/:id', () => {
       const res = await request(app)
         .patch(`/accounts/${accountACashId}`)
         .set('Authorization', `Bearer ${tokenA}`)
-        .send({ initialBalance: bad });
+        .send({ targetBalance: bad });
       expect(res.status, `amount=${JSON.stringify(bad)}`).toBe(400);
     }
     expectNoSecrets({});
@@ -152,7 +152,7 @@ describe('PATCH /accounts/:id', () => {
     const res = await request(app)
       .patch('/accounts/00000000-0000-4000-8000-000000000000')
       .set('Authorization', `Bearer ${tokenA}`)
-      .send({ initialBalance: '100' });
+      .send({ targetBalance: '100' });
     expect(res.status).toBe(404);
   });
 });

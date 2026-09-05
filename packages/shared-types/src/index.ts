@@ -10,4 +10,5 @@
 
 export * from './auth.js';
 export * from './account.js';
+export * from './categories.js';
 export * from './transaction.js';

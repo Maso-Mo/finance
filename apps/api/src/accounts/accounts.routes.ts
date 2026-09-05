@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { accountBalanceUpdateSchema } from '@finance/shared-types';
+import { accountTargetBalanceSchema } from '@finance/shared-types';
 import { parseOrThrow } from '../validation.js';
 import * as svc from './accounts.service.js';
 
@@ -13,13 +13,15 @@ router.get('/', async (req, res) => {
   res.json(await svc.getDashboard(req.userId as string));
 });
 
-// PATCH /accounts/:id → mise à jour du solde initial manuel.
+// PATCH /accounts/:id → saisie du solde CIBLE (« je veux que le solde connu
+// devienne X »). Le backend décide : initialBalance (aucun mouvement) ou
+// AccountAdjustment (correction) — cf. accounts.service.
 router.patch('/:id', async (req, res) => {
-  const body = parseOrThrow(accountBalanceUpdateSchema, req.body);
-  const result = await svc.updateInitialBalance(
+  const body = parseOrThrow(accountTargetBalanceSchema, req.body);
+  const result = await svc.setAccountTargetBalance(
     req.userId as string,
     req.params.id,
-    body.initialBalance,
+    body.targetBalance,
   );
   res.json(result);
 });
