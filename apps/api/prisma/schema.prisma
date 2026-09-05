@@ -1,8 +1,8 @@
 // Schéma Prisma — @finance/api
 //
-// Étape 2/3 : socle d'accès PostgreSQL uniquement. Aucun modèle métier n'est
-// encore déclaré (comptes, transactions, budgets, épargne, dettes, rappels,
-// etc.) : ils seront ajoutés à leurs étapes dédiées, avec les migrations
+// Étape 3 : authentification (User + RefreshSession).
+// Aucun modèle financier (comptes, transactions, budgets, etc.) n'est encore
+// déclaré : ils seront ajoutés à leurs étapes dédiées, avec les migrations
 // correspondantes.
 //
 // Conventions Prisma 7 :
@@ -20,4 +20,38 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+/// Utilisateur de l'application (authentification email + mot de passe).
+/// Champs strictement limités à l'auth pour l'instant : prénom, avatar,
+/// devise préférée, profils financiers, rôles, etc. seront ajoutés si un
+/// réel besoin apparaît.
+model User {
+  id              String           @id @default(uuid()) @db.Uuid
+  email           String           @unique
+  passwordHash    String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  refreshSessions RefreshSession[]
+
+  @@map("users")
+}
+
+/// Session de refresh (refresh token).
+/// On ne stocke JAMAIS le refresh token brut : uniquement son empreinte
+/// SHA-256 (tokenHash). La rotation marque l'ancienne session comme révoquée
+/// (revokedAt) et en crée une nouvelle ; une session expirée ou révoquée ne
+/// peut plus produire d'access token.
+model RefreshSession {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_sessions")
 }

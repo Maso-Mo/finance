@@ -2,14 +2,10 @@
  * @finance/shared-types
  *
  * Contrats partagés entre le frontend (web) et le backend (api) :
- * schémas Zod, DTO, types TypeScript et enums métier.
+ * schémas Zod, types TypeScript et enums métier. Source unique de validation.
  *
- * Étape 1 : ce package est volontairement vide. Aucun schéma métier fictif
- * n'est créé ici. Les premiers contrats seront ajoutés à l'étape dédiée aux
- * modules métier (comptes, transactions, etc.).
- *
- * Un fichier d'entrée existe pour que le package compile et soit importable
- * (build TS -> dist/index.js + dist/index.d.ts).
+ * Règles : indépendant de Prisma, aucun secret (mot de passe, refresh token
+ * brut, types Prisma internes) n'est partagé ici.
  */
 
-export {};
+export * from './auth.js';
