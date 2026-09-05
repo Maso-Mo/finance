@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ACCOUNT_TYPES, CURRENCIES } from '@finance/shared-types';
 import type { AccountPublic, Currency } from '@finance/shared-types';
@@ -42,17 +42,29 @@ function AccountRow({
   return (
     <li className="flex flex-col gap-2 border-t border-neutral-200 py-3 first:border-t-0 dark:border-neutral-800">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
-          {ACCOUNT_TYPE_LABELS[account.type]}
-        </span>
+        <div className="flex min-w-0 flex-col">
+          <span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+            {ACCOUNT_TYPE_LABELS[account.type]}
+          </span>
+          <span className="text-xs text-neutral-500 dark:text-neutral-400">
+            Solde de départ : {formatMoney(account.initialBalance, currency)}
+          </span>
+        </div>
         {!editing ? (
           <div className="flex items-center gap-3">
-            <span className="text-sm tabular-nums text-neutral-700 dark:text-neutral-200">
-              {formatMoney(account.initialBalance, currency)}
+            <span
+              className={`text-sm font-semibold tabular-nums ${
+                account.balance.startsWith('-')
+                  ? 'text-red-600 dark:text-red-400'
+                  : 'text-neutral-700 dark:text-neutral-200'
+              }`}
+            >
+              {formatMoney(account.balance, currency)}
             </span>
             <button
               type="button"
               onClick={startEditing}
+              title="Modifier le solde de départ saisi à la main"
               className="rounded-lg border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
             >
               Modifier
@@ -190,14 +202,22 @@ export default function HomePage() {
             </p>
           )}
 
-          <button
-            type="button"
-            onClick={() => setShowDetails((v) => !v)}
-            aria-expanded={showDetails}
-            className="mt-6 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white"
-          >
-            {showDetails ? 'Masquer les détails' : 'Détails'}
-          </button>
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowDetails((v) => !v)}
+              aria-expanded={showDetails}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white"
+            >
+              {showDetails ? 'Masquer les détails' : 'Détails'}
+            </button>
+            <Link
+              to="/transactions"
+              className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            >
+              Transactions
+            </Link>
+          </div>
 
           {showDetails && (
             <ul className="mt-4">
@@ -214,8 +234,10 @@ export default function HomePage() {
         </section>
 
         <p className="mt-4 text-xs text-neutral-500 dark:text-neutral-500">
-          L’épargne apparaît dans Détails mais n’est pas incluse dans le Total
-          disponible. Soldes saisis manuellement (solde initial).
+          Chaque solde affiché = solde de départ saisi à la main + revenus −
+          dépenses du journal. L’épargne apparaît dans Détails mais n’est pas
+          incluse dans le Total disponible. Enregistrez vos dépenses et revenus
+          dans la page Transactions.
         </p>
       </div>
     </main>

@@ -1,9 +1,12 @@
 import type {
+  AccountLedgerResponse,
   AccountUpdateResponse,
   AuthResponse,
   Currency,
   DashboardResponse,
   PublicUser,
+  TransactionCreate,
+  TransactionCreatedResponse,
 } from '@finance/shared-types';
 
 /**
@@ -162,5 +165,37 @@ export async function apiSetCurrency(currency: Currency): Promise<void> {
   await request<void>('/me/preferences', {
     method: 'PATCH',
     body: { currency },
+  });
+}
+
+// --- Journal de transactions d'un compte ---
+
+/** Journal complet d'un compte : compte (solde dérivé) + opérations + totaux. */
+export async function apiGetAccountLedger(
+  accountId: string,
+): Promise<AccountLedgerResponse> {
+  return request<AccountLedgerResponse>(
+    `/accounts/${accountId}/transactions`,
+  );
+}
+
+/** Enregistre une dépense ou un revenu sur le compte (dépense/revenu). */
+export async function apiCreateTransaction(
+  accountId: string,
+  input: TransactionCreate,
+): Promise<TransactionCreatedResponse> {
+  return request<TransactionCreatedResponse>(
+    `/accounts/${accountId}/transactions`,
+    { method: 'POST', body: input },
+  );
+}
+
+/** Supprime une opération (correction d'une saisie erronée). */
+export async function apiDeleteTransaction(
+  accountId: string,
+  transactionId: string,
+): Promise<void> {
+  await request<void>(`/accounts/${accountId}/transactions/${transactionId}`, {
+    method: 'DELETE',
   });
 }

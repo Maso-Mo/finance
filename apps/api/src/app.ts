@@ -13,6 +13,7 @@ import { parseOrThrow } from './validation.js';
 import { currencyPreferenceSchema } from '@finance/shared-types';
 import { accountsRouter } from './accounts/accounts.routes.js';
 import { updateUserCurrency } from './accounts/accounts.service.js';
+import { transactionsRouter } from './transactions/transactions.routes.js';
 
 /**
  * Construction de l'application Express (sans démarrage réseau).
@@ -64,6 +65,10 @@ app.use('/auth', authRouter);
 
 // Comptes financiers (protégés par access JWT).
 app.use('/accounts', requireAuth, accountsRouter);
+
+// Journal de transactions d'un compte (protégé) : GET/POST un journal,
+// DELETE une opération.
+app.use('/accounts', requireAuth, transactionsRouter);
 
 // Préférence de devise principale de l'utilisateur (protégée).
 app.patch('/me/preferences', requireAuth, async (req, res) => {

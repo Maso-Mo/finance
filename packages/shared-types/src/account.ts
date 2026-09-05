@@ -48,8 +48,11 @@ export const accountPublicSchema = z.object({
   id: z.string().uuid(),
   type: accountTypeSchema,
   currency: currencySchema,
-  // Montant exact, transmis comme chaîne (jamais de number flottant).
+  // Solde de départ saisi manuellement, exact, en chaîne.
   initialBalance: z.string(),
+  // Solde COURANT dérivé (lecture) : initialBalance + revenus − dépenses du
+  // journal de transactions (règle finance-core), exact, en chaîne.
+  balance: z.string(),
 });
 export type AccountPublic = z.infer<typeof accountPublicSchema>;
 

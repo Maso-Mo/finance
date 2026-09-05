@@ -1,12 +1,22 @@
 import { prisma } from '../db.js';
 import { ApiError } from '../http-error.js';
-import { sumAvailableBalance, type BalanceEntry } from '@finance/finance-core';
+import {
+  sumAvailableBalance,
+  toMoney,
+  type BalanceEntry,
+  type Money,
+} from '@finance/finance-core';
 import type { AccountPublic, Currency } from '@finance/shared-types';
+import { getAccountNetFlows } from '../transactions/transactions.service.js';
 
 /**
  * Service des comptes financiers V1.
  * Tous les accès sont filtrés par userId authentifié : un utilisateur ne peut
  * jamais lire/modifier un compte qui ne lui appartient pas.
+ *
+ * Solde courant dérivé (étape 5) : solde de départ (initialBalance, saisi à la
+ * main) + revenus − dépenses du journal de transactions. Le total disponible
+ * est ensuite calculé sur ces soldes dérivés.
  *
  * Représentation monétaire exacte : le Decimal Prisma est converti en chaîne
  * à la frontière (jamais de number flottant), puis les calculs de total
@@ -20,12 +30,13 @@ type AccountRow = {
   initialBalance: { toString(): string };
 };
 
-function toPublic(account: AccountRow): AccountPublic {
+function toPublic(account: AccountRow, balance: Money): AccountPublic {
   return {
     id: account.id,
     type: account.type as AccountPublic['type'],
     currency: account.currency as AccountPublic['currency'],
     initialBalance: account.initialBalance.toString(),
+    balance: balance.toString(),
   };
 }
 
@@ -51,15 +62,24 @@ export async function getDashboard(userId: string): Promise<{
     orderBy: { type: 'asc' },
   });
 
-  const entries: BalanceEntry[] = rows.map((row) => ({
-    type: row.type,
-    balance: row.initialBalance.toString(),
+  // Flux net (revenus − dépenses) par compte, calculé en une requête agrégée.
+  const flows = await getAccountNetFlows(userId);
+
+  const accounts: AccountPublic[] = rows.map((row) => {
+    const starting = toMoney(row.initialBalance.toString());
+    const flow = flows.get(row.id);
+    return toPublic(row, flow ? starting.plus(flow) : starting);
+  });
+
+  const entries: BalanceEntry[] = accounts.map((account) => ({
+    type: account.type,
+    balance: account.balance,
   }));
   const total = sumAvailableBalance(entries);
 
   return {
     currency,
-    accounts: rows.map(toPublic),
+    accounts,
     totalAvailable: total.toString(),
   };
 }

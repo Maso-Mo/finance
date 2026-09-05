@@ -1,4 +1,8 @@
-import type { AccountType, Currency } from '@finance/shared-types';
+import type {
+  AccountType,
+  Currency,
+  TransactionType,
+} from '@finance/shared-types';
 
 /**
  * Formatage d'affichage UNIQUEMENT. Le calcul monétaire reste exact
@@ -13,6 +17,11 @@ export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   AIRTEL_MONEY: 'Airtel Money',
   CASH: 'Cash',
   SAVINGS: 'Épargne',
+};
+
+export const TRANSACTION_TYPE_LABELS: Record<TransactionType, string> = {
+  INCOME: 'Revenu',
+  EXPENSE: 'Dépense',
 };
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
@@ -38,10 +47,13 @@ function groupThousands(intPart: string): string {
 
 /**
  * Formate une valeur monétaire exacte (chaîne) pour l'affichage.
- * Ex. MGA "1150000" → "1 150 000 Ar" ; EUR "1500.5" → "1 500,50 €".
+ * Ex. MGA "1150000" → "1 150 000 Ar" ; EUR "1500.5" → "1 500,50 €" ;
+ * un solde négatif "-30000" → "-30 000 Ar" (signe et groupement corrects).
  */
 export function formatMoney(value: string, currency: Currency): string {
-  const parts = value.split('.');
+  const negative = value.startsWith('-');
+  const absolute = negative ? value.slice(1) : value;
+  const parts = absolute.split('.');
   const intPart = parts[0] ?? '0';
   const rawFraction = parts[1] ?? '';
   const decimals = decimalCount(currency);
@@ -59,7 +71,29 @@ export function formatMoney(value: string, currency: Currency): string {
         ? `${integer},${fraction}`
         : `${integer},00`;
 
-  return `${body} ${CURRENCY_SYMBOLS[currency]}`;
+  const sign = negative ? '-' : '';
+  return `${sign}${body} ${CURRENCY_SYMBOLS[currency]}`;
+}
+
+/**
+ * Montant d'une opération avec son signe pour l'affichage d'un journal :
+ * "+1 500 Ar" (revenu) / "-1 000 Ar" (dépense).
+ */
+export function formatSignedMoney(
+  value: string,
+  type: TransactionType,
+  currency: Currency,
+): string {
+  const formatted = formatMoney(value, currency);
+  return type === 'EXPENSE' ? `-${formatted}` : `+${formatted}`;
+}
+
+/** Date locale du navigateur au format "YYYY-MM-DD" (valeur d'input date). */
+export function toISODate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export function currencyName(currency: Currency): string {

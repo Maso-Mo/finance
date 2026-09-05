@@ -1,7 +1,7 @@
 // Schéma Prisma — @finance/api
 //
-// Étape 4 : comptes financiers manuels V1 (types fixes) + devise principale.
-// Les transactions/budgets/etc. arriveront aux étapes suivantes.
+// Étape 5 : transactions (dépenses/revenus). Le solde affiché d'un compte est
+// dérivé : solde de départ saisi + revenus − dépenses (voir finance-core).
 //
 // Conventions Prisma 7 :
 //  - générateur `prisma-client` (TypeScript) avec un output explicite vers
@@ -37,6 +37,14 @@ enum Currency {
   CAD
 }
 
+/// Sens d'une opération sur un compte : INCOME (revenu) ou EXPENSE (dépense).
+/// Le montant stocké est TOUJOURS positif ; le signe est appliqué par la règle
+/// financière de finance-core (dépense = flux sortant).
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
 /// Utilisateur de l'application (authentification email + mot de passe +
 /// devise principale).
 model User {
@@ -48,6 +56,7 @@ model User {
   updatedAt       DateTime         @updatedAt
   refreshSessions RefreshSession[]
   accounts        Account[]
+  transactions    Transaction[]
 
   @@map("users")
 }
@@ -69,24 +78,50 @@ model RefreshSession {
 
 /// Compte financier manuel V1.
 ///
-/// `initialBalance` = argent déclaré par l'utilisateur à la configuration.
-/// Ce n'est PAS un `balance` à incrémenter/décrémenter à chaque dépense :
-/// plus tard, solde = solde initial + mouvements du journal. Tant qu'aucune
-/// transaction n'existe, solde courant = initialBalance.
+/// `initialBalance` = argent déclaré par l'utilisateur à la configuration
+/// (le « solde de départ », saisi à la main). Le SOLDE COURANT affiché est
+/// dérivé en lecture : solde de départ + revenus − dépenses (transactions).
 ///
 /// Montants stockés en NUMERIC (Decimal Prisma), jamais en flottant.
 model Account {
-  id             String      @id @default(uuid()) @db.Uuid
-  userId         String      @db.Uuid
+  id             String        @id @default(uuid()) @db.Uuid
+  userId         String        @db.Uuid
   type           AccountType
   currency       Currency
-  initialBalance Decimal     @default(0) @db.Decimal(20, 2)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  initialBalance Decimal       @default(0) @db.Decimal(20, 2)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
 
   // V1 : au plus un compte de chaque type par utilisateur.
   @@unique([userId, type])
   @@index([userId])
   @@map("accounts")
+}
+
+/// Opération (dépense ou revenu) rattachée à un compte.
+///
+/// `amount` est stocké POSITIF quel que soit le sens (`type` porte le sens).
+/// `occurredAt` est la date saisie par l'utilisateur (jour de l'opération) ;
+/// la composante horaire reste neutre (stockée à midi UTC à la création depuis
+/// une date "YYYY-MM-DD"), ce qui évite tout décalage de fuseau horaire.
+model Transaction {
+  id          String          @id @default(uuid()) @db.Uuid
+  userId      String          @db.Uuid
+  accountId   String          @db.Uuid
+  type        TransactionType
+  amount      Decimal         @db.Decimal(20, 2)
+  description String?
+  occurredAt  DateTime
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account     Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // userId est redondant avec accountId mais permet des requêtes autorisées
+  // simples et directes (scoping par propriétaire sans jointure).
+  @@index([userId, occurredAt])
+  @@index([accountId, occurredAt])
+  @@map("transactions")
 }
