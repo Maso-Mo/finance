@@ -2,10 +2,18 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
-# Autorise les scripts de build des dépendances qui en ont réellement besoin
-# (esbuild est requis par Vite et tsx pour fonctionner).
+# Autorise les scripts de build des dépendances qui en ont réellement besoin.
+# - esbuild : requis par Vite et tsx.
+# - prisma / @prisma/client / @prisma/engines : nécessaires pour générer et
+#   faire fonctionner le Prisma Client (installation des moteurs, etc.).
 onlyBuiltDependencies:
   - esbuild
+  - prisma
+  - '@prisma/client'
+  - '@prisma/engines'
 
 allowBuilds:
+  '@prisma/client': set this to true or false
+  '@prisma/engines': set this to true or false
   esbuild: set this to true or false
+  prisma: set this to true or false

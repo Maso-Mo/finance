@@ -1,0 +1,18 @@
+// Schéma Prisma — @finance/api
+//
+// Étape 2 : socle d'accès PostgreSQL uniquement. Aucun modèle métier n'est
+// encore déclaré (comptes, transactions, budgets, épargne, dettes, rappels,
+// etc.) : ils seront ajoutés à leurs étapes dédiées, avec les migrations
+// correspondantes.
+//
+// La connexion utilise la variable d'environnement DATABASE_URL (définie dans
+// apps/api/.env, ignoré par Git). Voir apps/api/.env.example.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
