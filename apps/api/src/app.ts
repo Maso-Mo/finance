@@ -8,6 +8,11 @@ import { appConfig, corsConfig } from './config.js';
 import { ApiError } from './http-error.js';
 import { prisma } from './db.js';
 import { authRouter } from './auth/auth.routes.js';
+import { requireAuth } from './auth/middleware.js';
+import { parseOrThrow } from './validation.js';
+import { currencyPreferenceSchema } from '@finance/shared-types';
+import { accountsRouter } from './accounts/accounts.routes.js';
+import { updateUserCurrency } from './accounts/accounts.service.js';
 
 /**
  * Construction de l'application Express (sans démarrage réseau).
@@ -56,6 +61,16 @@ app.get('/health', async (_req, res) => {
 
 // Routes d'authentification.
 app.use('/auth', authRouter);
+
+// Comptes financiers (protégés par access JWT).
+app.use('/accounts', requireAuth, accountsRouter);
+
+// Préférence de devise principale de l'utilisateur (protégée).
+app.patch('/me/preferences', requireAuth, async (req, res) => {
+  const { currency } = parseOrThrow(currencyPreferenceSchema, req.body);
+  await updateUserCurrency(req.userId as string, currency);
+  res.status(204).end();
+});
 
 // 404 JSON.
 app.use((_req, res) => {

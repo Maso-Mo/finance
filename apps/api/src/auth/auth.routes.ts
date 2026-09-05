@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import type { Response } from 'express';
-import type { ZodType } from 'zod';
 import { registerSchema, loginSchema } from '@finance/shared-types';
 import { authConfig } from '../config.js';
 import { ApiError } from '../http-error.js';
+import { parseOrThrow } from '../validation.js';
 import * as service from './auth.service.js';
 import { requireAuth, requireTrustedOrigin } from './middleware.js';
 import { authLimiter, refreshLimiter } from './rate-limit.js';
@@ -12,7 +12,6 @@ const router = Router();
 
 // --- Cookies refresh (HttpOnly) ---
 const { cookieName, cookiePath, cookieSecure, ttlDays } = authConfig.refresh;
-
 function setRefreshCookie(res: Response, token: string): void {
   res.cookie(cookieName, token, {
     httpOnly: true,
@@ -36,18 +35,6 @@ function readRefreshCookie(req: {
   cookies: Record<string, string | undefined>;
 }): string | undefined {
   return req.cookies[cookieName];
-}
-
-// --- Validation du corps avec les schémas partagés (Zod) ---
-function parseOrThrow<T>(schema: ZodType<T>, data: unknown): T {
-  const result = schema.safeParse(data);
-  if (!result.success) {
-    const issue = result.error.issues[0];
-    const prefix =
-      issue && issue.path.length > 0 ? `${issue.path.join('.')}: ` : '';
-    throw new ApiError(400, `${prefix}${issue?.message ?? 'Invalid input.'}`);
-  }
-  return result.data;
 }
 
 router.post('/register', authLimiter, async (req, res) => {

@@ -1,4 +1,10 @@
-import type { AuthResponse, PublicUser } from '@finance/shared-types';
+import type {
+  AccountUpdateResponse,
+  AuthResponse,
+  Currency,
+  DashboardResponse,
+  PublicUser,
+} from '@finance/shared-types';
 
 /**
  * Client API minimal pour l'authentification.
@@ -134,4 +140,27 @@ export async function apiMe(): Promise<PublicUser> {
 export async function apiLogout(): Promise<void> {
   await request<void>('/auth/logout', { method: 'POST' });
   setAccessToken(null);
+}
+
+// --- Comptes financiers ---
+
+export async function apiGetAccounts(): Promise<DashboardResponse> {
+  return request<DashboardResponse>('/accounts');
+}
+
+export async function apiUpdateInitialBalance(
+  accountId: string,
+  initialBalance: string,
+): Promise<AccountUpdateResponse> {
+  return request<AccountUpdateResponse>(`/accounts/${accountId}`, {
+    method: 'PATCH',
+    body: { initialBalance },
+  });
+}
+
+export async function apiSetCurrency(currency: Currency): Promise<void> {
+  await request<void>('/me/preferences', {
+    method: 'PATCH',
+    body: { currency },
+  });
 }

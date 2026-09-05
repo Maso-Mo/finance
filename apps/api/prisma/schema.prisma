@@ -1,16 +1,13 @@
 // Schéma Prisma — @finance/api
 //
-// Étape 3 : authentification (User + RefreshSession).
-// Aucun modèle financier (comptes, transactions, budgets, etc.) n'est encore
-// déclaré : ils seront ajoutés à leurs étapes dédiées, avec les migrations
-// correspondantes.
+// Étape 4 : comptes financiers manuels V1 (types fixes) + devise principale.
+// Les transactions/budgets/etc. arriveront aux étapes suivantes.
 //
 // Conventions Prisma 7 :
 //  - générateur `prisma-client` (TypeScript) avec un output explicite vers
 //    src/generated/prisma (dossier généré, ignoré par Git) ;
 //  - moduleFormat "esm" : notre application est en ESM ("type": "module") ;
-//  - l'URL de connexion (DATABASE_URL) est fournie via prisma.config.ts
-//    (option datasource.url), pas dans ce fichier.
+//  - l'URL de connexion (DATABASE_URL) est fournie via prisma.config.ts.
 
 generator client {
   provider     = "prisma-client"
@@ -22,26 +19,40 @@ datasource db {
   provider = "postgresql"
 }
 
-/// Utilisateur de l'application (authentification email + mot de passe).
-/// Champs strictement limités à l'auth pour l'instant : prénom, avatar,
-/// devise préférée, profils financiers, rôles, etc. seront ajoutés si un
-/// réel besoin apparaît.
+/// Types de comptes V1 (fixes). Chaque utilisateur a au plus un compte par type.
+enum AccountType {
+  BANK
+  MVOLA
+  ORANGE_MONEY
+  AIRTEL_MONEY
+  CASH
+  SAVINGS
+}
+
+/// Devise principale de l'espace financier (tous les comptes standard partagent
+/// cette devise afin que le "Total disponible" soit cohérent).
+enum Currency {
+  MGA
+  EUR
+  CAD
+}
+
+/// Utilisateur de l'application (authentification email + mot de passe +
+/// devise principale).
 model User {
   id              String           @id @default(uuid()) @db.Uuid
   email           String           @unique
   passwordHash    String
+  currency        Currency         @default(MGA)
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   refreshSessions RefreshSession[]
+  accounts        Account[]
 
   @@map("users")
 }
 
-/// Session de refresh (refresh token).
-/// On ne stocke JAMAIS le refresh token brut : uniquement son empreinte
-/// SHA-256 (tokenHash). La rotation marque l'ancienne session comme révoquée
-/// (revokedAt) et en crée une nouvelle ; une session expirée ou révoquée ne
-/// peut plus produire d'access token.
+/// Session de refresh (refresh token). Seul le hash SHA-256 est stocké.
 model RefreshSession {
   id        String    @id @default(uuid()) @db.Uuid
   userId    String    @db.Uuid
@@ -54,4 +65,28 @@ model RefreshSession {
 
   @@index([userId])
   @@map("refresh_sessions")
+}
+
+/// Compte financier manuel V1.
+///
+/// `initialBalance` = argent déclaré par l'utilisateur à la configuration.
+/// Ce n'est PAS un `balance` à incrémenter/décrémenter à chaque dépense :
+/// plus tard, solde = solde initial + mouvements du journal. Tant qu'aucune
+/// transaction n'existe, solde courant = initialBalance.
+///
+/// Montants stockés en NUMERIC (Decimal Prisma), jamais en flottant.
+model Account {
+  id             String      @id @default(uuid()) @db.Uuid
+  userId         String      @db.Uuid
+  type           AccountType
+  currency       Currency
+  initialBalance Decimal     @default(0) @db.Decimal(20, 2)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // V1 : au plus un compte de chaque type par utilisateur.
+  @@unique([userId, type])
+  @@index([userId])
+  @@map("accounts")
 }

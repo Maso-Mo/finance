@@ -8,7 +8,7 @@ import {
   issueRefreshToken,
   refreshExpiresAt,
 } from './refresh-token.js';
-import type { PublicUser } from '@finance/shared-types';
+import { ACCOUNT_TYPES, type PublicUser } from '@finance/shared-types';
 
 export interface AuthTokens {
   accessToken: string;
@@ -62,9 +62,20 @@ export async function registerUser(
 
   let user: PublicUserRow;
   try {
-    user = await prisma.user.create({
-      data: { email, passwordHash: await hashPassword(password) },
-      select: { id: true, email: true },
+    // Création ATOMIQUE : l'utilisateur et ses six comptes standards.
+    user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: { email, passwordHash: await hashPassword(password) },
+        select: { id: true, email: true, currency: true },
+      });
+      await tx.account.createMany({
+        data: ACCOUNT_TYPES.map((type) => ({
+          userId: created.id,
+          type,
+          currency: created.currency,
+        })),
+      });
+      return { id: created.id, email: created.email };
     });
   } catch (error) {
     if (isUniqueViolation(error)) {
