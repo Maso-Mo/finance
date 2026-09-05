@@ -271,12 +271,20 @@ export default function HomePage() {
                 ) : null}
               </p>
             </div>
-            <Link
-              to="/planned"
-              className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
-            >
-              Dépenses à venir
-            </Link>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Link
+                to="/expected"
+                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+              >
+                Revenus à venir
+              </Link>
+              <Link
+                to="/planned"
+                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+              >
+                Dépenses à venir
+              </Link>
+            </div>
           </div>
         </section>
 

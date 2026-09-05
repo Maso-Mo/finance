@@ -18,6 +18,8 @@ import { transactionsRouter } from './transactions/transactions.routes.js';
 import { plannedExpensesRouter } from './planned-expenses/planned-expenses.routes.js';
 import { recurringExpensesRouter } from './recurring-expenses/recurring-expenses.routes.js';
 import { remindersRouter } from './reminders/reminders.routes.js';
+import { expectedIncomesRouter } from './expected-incomes/expected-incomes.routes.js';
+import { incomeRemindersRouter } from './expected-incomes/income-reminders.routes.js';
 
 /**
  * Construction de l'application Express (sans démarrage réseau).
@@ -85,6 +87,13 @@ app.use('/recurring-expenses', requireAuth, recurringExpensesRouter);
 
 // Rappels internes « Payé ? » (étape 6) : en retard / aujourd'hui / à venir.
 app.use('/reminders', requireAuth, remindersRouter);
+
+// Revenus futurs (étape 7) : PENDING = aucun impact financier (CONFIRMED
+// comme UNCERTAIN). La réception réelle crée une Transaction INCOME.
+app.use('/expected-incomes', requireAuth, expectedIncomesRouter);
+
+// Rappels internes « Reçu ? » (étape 7) : read-only strict, états dérivés.
+app.use('/income-reminders', requireAuth, incomeRemindersRouter);
 
 // Préférence de devise principale de l'utilisateur (protégée).
 app.patch('/me/preferences', requireAuth, async (req, res) => {

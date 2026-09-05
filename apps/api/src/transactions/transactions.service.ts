@@ -31,7 +31,7 @@ import type {
  */
 
 /** Inclusions systématiques pour sérialiser une transaction publique. */
-const includeLedger = {
+export const includeLedger = {
   category: { select: { id: true, name: true } },
   allocations: {
     include: { account: { select: { id: true, type: true } } },
@@ -61,7 +61,7 @@ function occurredAtToDate(value: string): Date {
   return new Date(`${value}T12:00:00.000Z`);
 }
 
-function toPublicTransaction(row: TransactionRow): TransactionPublic {
+export function toPublicTransaction(row: TransactionRow): TransactionPublic {
   return {
     id: row.id,
     type: row.type as TransactionType,
@@ -330,6 +330,17 @@ export async function deleteTransaction(
         status: 'PAID',
       },
       data: { status: 'PENDING', confirmedTransactionId: null },
+    });
+    // Même invariant pour un revenu futur (étape 7) : si la Transaction
+    // INCOME issue d'un ExpectedIncome est supprimée, le revenu revient
+    // PENDING + lien retiré — jamais un ExpectedIncome « RECEIVED » orphelin.
+    await tx.expectedIncome.updateMany({
+      where: {
+        receivedTransactionId: transactionId,
+        userId,
+        status: 'RECEIVED',
+      },
+      data: { status: 'PENDING', receivedTransactionId: null },
     });
   });
 }

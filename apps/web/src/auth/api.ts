@@ -4,6 +4,14 @@ import type {
   CategoriesResponse,
   Currency,
   DashboardResponse,
+  ExpectedIncomeConfirmReceived,
+  ExpectedIncomeConfirmReceivedResponse,
+  ExpectedIncomeCreate,
+  ExpectedIncomeMutationResponse,
+  ExpectedIncomePublic,
+  ExpectedIncomesResponse,
+  ExpectedIncomeUpdate,
+  IncomeRemindersResponse,
   PlannedExpenseConfirmPaid,
   PlannedExpenseConfirmPaidResponse,
   PlannedExpenseCreate,
@@ -331,5 +339,68 @@ export async function apiGetReminders(
   return request<RemindersResponse>(`/reminders?today=${today}`);
 }
 
-export type { PlannedExpensePublic, RecurringExpensePublic };
+// --- Revenus futurs (étape 7) ---
+
+/** Tous les revenus futurs de l'utilisateur (PENDING + résolus), bucket dérivé. */
+export async function apiGetExpectedIncomes(
+  today: string,
+): Promise<ExpectedIncomesResponse> {
+  return request<ExpectedIncomesResponse>(`/expected-incomes?today=${today}`);
+}
+
+/** Crée un revenu futur PENDING (CONFIRMED/UNCERTAIN, date exacte ou plage). */
+export async function apiCreateExpectedIncome(
+  input: ExpectedIncomeCreate,
+): Promise<ExpectedIncomeMutationResponse> {
+  return request<ExpectedIncomeMutationResponse>('/expected-incomes', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+/** Modifie un revenu futur encore PENDING. */
+export async function apiUpdateExpectedIncome(
+  expectedIncomeId: string,
+  input: ExpectedIncomeUpdate,
+): Promise<ExpectedIncomeMutationResponse> {
+  return request<ExpectedIncomeMutationResponse>(
+    `/expected-incomes/${expectedIncomeId}`,
+    { method: 'PATCH', body: input },
+  );
+}
+
+/** Annule un revenu futur PENDING (CANCELED). */
+export async function apiCancelExpectedIncome(
+  expectedIncomeId: string,
+): Promise<ExpectedIncomeMutationResponse> {
+  return request<ExpectedIncomeMutationResponse>(
+    `/expected-incomes/${expectedIncomeId}`,
+    { method: 'DELETE' },
+  );
+}
+
+/** « Oui, je l'ai reçu » : crée la vraie Transaction INCOME (atomique). */
+export async function apiConfirmExpectedIncomeReceived(
+  expectedIncomeId: string,
+  input: ExpectedIncomeConfirmReceived,
+): Promise<ExpectedIncomeConfirmReceivedResponse> {
+  return request<ExpectedIncomeConfirmReceivedResponse>(
+    `/expected-incomes/${expectedIncomeId}/confirm-received`,
+    { method: 'POST', body: input },
+  );
+}
+
+/** Rappels « Reçu ? » (read-only) : today = jour local (YYYY-MM-DD). */
+export async function apiGetIncomeReminders(
+  today: string,
+): Promise<IncomeRemindersResponse> {
+  return request<IncomeRemindersResponse>(`/income-reminders?today=${today}`);
+}
+
+export type {
+  ExpectedIncomePublic,
+  PlannedExpensePublic,
+  RecurringExpensePublic,
+};
+
 

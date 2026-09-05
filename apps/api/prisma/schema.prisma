@@ -79,6 +79,33 @@ enum PlannedExpenseStatus {
   SKIPPED
 }
 
+/// Certitude d'un REVENU FUTUR (étape 7).
+///
+/// ⚠ Décrit la CERTITUDE du revenu attendu, jamais son statut de réception :
+///  - CONFIRMED : l'utilisateur s'attend réellement à recevoir cet argent
+///    (salaire annoncé, paiement client confirmé, …) ;
+///  - UNCERTAIN : revenu espéré mais non garanti (bonus éventuel, client qui
+///    pourrait payer, …). Toujours affiché distinctement, jamais traité comme
+///    de l'argent garanti.
+enum ExpectedIncomeCertainty {
+  CONFIRMED
+  UNCERTAIN
+}
+
+/// Statut de réception d'un REVENU FUTUR (étape 7).
+///
+///  - PENDING  : pas encore réellement reçu (aucun impact sur un solde) ;
+///  - RECEIVED : une vraie Transaction INCOME a été créée (confirm-received) ;
+///  - CANCELED : finalement plus attendu.
+///
+/// Le statut TEMPOREL (à venir / aujourd'hui / dans la période / en retard)
+/// est TOUJOURS dérivé en lecture (finance-core), jamais stocké.
+enum ExpectedIncomeStatus {
+  PENDING
+  RECEIVED
+  CANCELED
+}
+
 /// Utilisateur de l'application (authentification email + mot de passe +
 /// devise principale).
 model User {
@@ -95,6 +122,7 @@ model User {
   accountAdjustments AccountAdjustment[]
   plannedExpenses    PlannedExpense[]
   recurringExpenses  RecurringExpenseRule[]
+  expectedIncomes    ExpectedIncome[]
 
   @@map("users")
 }
@@ -202,6 +230,9 @@ model Transaction {
   // Relation 1-1 vers la dépense planifiée confirmée (étape 6) : une même
   // PlannedExpense ne peut générer qu'UNE seule Transaction active.
   confirmedPlannedExpense PlannedExpense?                @relation("PlannedExpenseConfirm")
+  // Relation 1-1 vers le revenu futur confirmé reçu (étape 7) : un même
+  // ExpectedIncome ne peut générer qu'UNE seule Transaction INCOME active.
+  receivedExpectedIncome  ExpectedIncome?                @relation("ExpectedIncomeReceive")
 
   // userId redondant avec les allocations mais permet un scoping autorisé
   // simple et direct (requêtes par propriétaire sans jointure).
@@ -322,4 +353,46 @@ model PlannedExpense {
   @@index([userId, dueDate])
   @@index([recurringRuleId, status])
   @@map("planned_expenses")
+}
+
+/// Revenu FUTUR (étape 7) : argent ATTENDU, jamais encore reçu.
+///
+/// ⚠ RÈGLE ABSOLUE : PENDING (CONFIRMED comme UNCERTAIN) n'est PAS de l'argent
+/// disponible — aucun impact sur un compte, le Total disponible ou les
+/// statistiques. Il devient une vraie Transaction INCOME UNIQUEMENT après la
+/// confirmation explicite (`confirmReceived`) :
+///  1. la Transaction INCOME réelle (journal existant, étape 5) est créée
+///     (montant réel, date réelle ou « je ne sais plus », allocations réelles
+///     ou « compte inconnu ») ;
+///  2. le revenu passe RECEIVED ;
+///  3. `receivedTransactionId` mémorise le lien (UNIQUE : un même revenu ne
+///     peut jamais produire qu'UNE seule Transaction active, au niveau base).
+/// L'opération est ATOMIQUE. La suppression logique de la Transaction liée
+/// ramène le revenu à PENDING (jamais un état RECEIVED orphelin).
+///
+/// Temporellement, UNE seule forme est active (invariant service + Zod) :
+///  - date EXACTE  : expectedDate (jour calendaire) ;
+///  - PLAGE        : windowStart + windowEnd (les deux, start <= end).
+/// Le système n'invente jamais une date exacte dans une plage. Le statut
+/// temporel (à venir / aujourd'hui / dans la période / en retard) est DÉRIVÉ.
+model ExpectedIncome {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  userId                String                  @db.Uuid
+  amount                Decimal                 @db.Decimal(20, 2)
+  currency              Currency                @default(MGA)
+  certainty             ExpectedIncomeCertainty
+  status                ExpectedIncomeStatus    @default(PENDING)
+  description           String?
+  expectedDate          DateTime?               @db.Date
+  windowStart           DateTime?               @db.Date
+  windowEnd             DateTime?               @db.Date
+  receivedTransactionId String?                 @unique @db.Uuid
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  receivedTransaction   Transaction?            @relation("ExpectedIncomeReceive", fields: [receivedTransactionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([userId, expectedDate])
+  @@map("expected_incomes")
 }
