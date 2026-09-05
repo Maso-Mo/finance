@@ -5,6 +5,9 @@ node_modules/
 dist/
 build/
 
+# Client Prisma généré (Prisma 7, générateur prisma-client)
+apps/api/src/generated/
+
 # Vite
 .vite/
 *.local

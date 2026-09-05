@@ -1,18 +1,23 @@
 // Schéma Prisma — @finance/api
 //
-// Étape 2 : socle d'accès PostgreSQL uniquement. Aucun modèle métier n'est
+// Étape 2/3 : socle d'accès PostgreSQL uniquement. Aucun modèle métier n'est
 // encore déclaré (comptes, transactions, budgets, épargne, dettes, rappels,
 // etc.) : ils seront ajoutés à leurs étapes dédiées, avec les migrations
 // correspondantes.
 //
-// La connexion utilise la variable d'environnement DATABASE_URL (définie dans
-// apps/api/.env, ignoré par Git). Voir apps/api/.env.example.
+// Conventions Prisma 7 :
+//  - générateur `prisma-client` (TypeScript) avec un output explicite vers
+//    src/generated/prisma (dossier généré, ignoré par Git) ;
+//  - moduleFormat "esm" : notre application est en ESM ("type": "module") ;
+//  - l'URL de connexion (DATABASE_URL) est fournie via prisma.config.ts
+//    (option datasource.url), pas dans ce fichier.
 
 generator client {
-  provider = "prisma-client-js"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
