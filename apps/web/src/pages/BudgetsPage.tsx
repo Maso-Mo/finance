@@ -17,6 +17,7 @@ import {
   apiUpdateBudget,
 } from '../auth/api';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { NotificationsBell } from '../components/NotificationsBell';
 import { formatMoney, toISODate } from '../lib/format';
 
 /**
@@ -298,6 +299,7 @@ export default function BudgetsPage() {
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <NotificationsBell />
           <ThemeToggle />
           <button
             type="button"

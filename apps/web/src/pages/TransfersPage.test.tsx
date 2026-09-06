@@ -15,6 +15,7 @@ import {
   apiCreateTransfer,
   apiDeleteTransfer,
   apiGetAccounts,
+  apiGetNotifications,
   apiGetTransfers,
   apiRefresh,
   apiUpdateTransfer,
@@ -27,6 +28,7 @@ vi.mock('../auth/api', () => ({
   apiRegister: vi.fn(),
   setAccessToken: vi.fn(),
   apiGetAccounts: vi.fn(),
+  apiGetNotifications: vi.fn(),
   apiGetTransfers: vi.fn(),
   apiCreateTransfer: vi.fn(),
   apiUpdateTransfer: vi.fn(),
@@ -107,6 +109,7 @@ function renderPage() {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(apiRefresh).mockResolvedValue(USER);
+  vi.mocked(apiGetNotifications).mockResolvedValue({ notifications: [], total: 0, page: 1, limit: 1, unreadCount: 0 });
   vi.mocked(apiGetAccounts).mockResolvedValue(DASHBOARD);
   vi.mocked(apiGetTransfers).mockResolvedValue({
     transfers: [],

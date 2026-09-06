@@ -16,6 +16,7 @@ import {
   apiSkipPlannedExpense, apiUpdatePlannedExpense, apiUpdateRecurringExpense,
 } from '../auth/api';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { NotificationsBell } from '../components/NotificationsBell';
 import { formatMoney, toISODate } from '../lib/format';
 import {
   buildConfirmPaidPayload, buildPlannedExpensePayload, buildRecurringExpensePayload,
@@ -123,6 +124,7 @@ export default function PlannedExpensesPage() {
           <span className="hidden text-xs text-neutral-500 sm:inline dark:text-neutral-400">{user?.email}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <NotificationsBell />
           <ThemeToggle />
           <button type="button" onClick={() => void signOut()} className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800">Déconnexion</button>
         </div>

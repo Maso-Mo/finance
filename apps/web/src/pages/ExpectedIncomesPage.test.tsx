@@ -20,6 +20,7 @@ import {
   apiCreateExpectedIncome,
   apiGetAccounts,
   apiGetExpectedIncomes,
+  apiGetNotifications,
   apiRefresh,
 } from '../auth/api';
 
@@ -31,6 +32,7 @@ vi.mock('../auth/api', () => ({
   setAccessToken: vi.fn(),
   apiGetAccounts: vi.fn(),
   apiGetExpectedIncomes: vi.fn(),
+  apiGetNotifications: vi.fn(),
   apiCreateExpectedIncome: vi.fn(),
   apiUpdateExpectedIncome: vi.fn(),
   apiCancelExpectedIncome: vi.fn(),
@@ -107,6 +109,7 @@ function renderPage() {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(apiRefresh).mockResolvedValue(USER);
+  vi.mocked(apiGetNotifications).mockResolvedValue({ notifications: [], total: 0, page: 1, limit: 1, unreadCount: 0 });
   vi.mocked(apiGetAccounts).mockResolvedValue(ACCOUNTS_RESPONSE);
   vi.mocked(apiGetExpectedIncomes).mockResolvedValue({ today: '2026-10-05', expectedIncomes: [] });
 });

@@ -20,6 +20,7 @@ import {
   apiGetBudgets,
   apiGetCategories,
   apiGetForecast,
+  apiGetNotifications,
   apiLogin,
   apiLogout,
   apiRefresh,
@@ -37,6 +38,7 @@ vi.mock('../auth/api', () => ({
   apiGetCategories: vi.fn(),
   apiGetBudgets: vi.fn(),
   apiGetForecast: vi.fn(),
+  apiGetNotifications: vi.fn(),
   apiCreateBudget: vi.fn(),
   apiUpdateBudget: vi.fn(),
   apiDeleteBudget: vi.fn(),
@@ -165,6 +167,7 @@ let currentForecast: (month: string) => FinancialForecastResponse = emptyForecas
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(apiRefresh).mockResolvedValue(USER);
+  vi.mocked(apiGetNotifications).mockResolvedValue({ notifications: [], total: 0, page: 1, limit: 1, unreadCount: 0 });
   vi.mocked(apiGetCategories).mockResolvedValue(CATEGORIES_RESPONSE);
   currentOverview = emptyOverview;
   currentForecast = emptyForecast;

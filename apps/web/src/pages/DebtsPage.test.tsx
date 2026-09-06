@@ -19,6 +19,7 @@ import {
   apiDeleteDebtSettlement,
   apiGetAccounts,
   apiGetDebts,
+  apiGetNotifications,
   apiRefresh,
 } from '../auth/api';
 
@@ -30,6 +31,7 @@ vi.mock('../auth/api', () => ({
   setAccessToken: vi.fn(),
   apiGetAccounts: vi.fn(),
   apiGetDebts: vi.fn(),
+  apiGetNotifications: vi.fn(),
   apiCreateDebt: vi.fn(),
   apiDeleteDebt: vi.fn(),
   apiAddDebtSettlement: vi.fn(),
@@ -135,6 +137,7 @@ function renderPage() {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(apiRefresh).mockResolvedValue(USER);
+  vi.mocked(apiGetNotifications).mockResolvedValue({ notifications: [], total: 0, page: 1, limit: 1, unreadCount: 0 });
   vi.mocked(apiGetAccounts).mockResolvedValue(DASHBOARD);
   vi.mocked(apiGetDebts).mockResolvedValue({ debts: [] });
   vi.mocked(apiCreateDebt).mockResolvedValue({} as never);

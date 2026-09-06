@@ -18,6 +18,7 @@ import {
   apiUpdateTransaction,
 } from '../auth/api';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { NotificationsBell } from '../components/NotificationsBell';
 import TransactionForm from '../components/TransactionForm';
 import {
   ACCOUNT_TYPE_LABELS,
@@ -170,6 +171,7 @@ export default function TransactionsPage() {
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <NotificationsBell />
           <ThemeToggle />
           <button
             type="button"

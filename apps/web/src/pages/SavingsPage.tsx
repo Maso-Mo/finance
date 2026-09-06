@@ -21,6 +21,7 @@ import {
   apiUpdateSavingsPlan,
 } from '../auth/api';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { NotificationsBell } from '../components/NotificationsBell';
 import { ACCOUNT_TYPE_LABELS, formatMoney, toISODate } from '../lib/format';
 
 /**
@@ -777,6 +778,7 @@ export default function SavingsPage() {
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <NotificationsBell />
           <ThemeToggle />
           <button
             type="button"

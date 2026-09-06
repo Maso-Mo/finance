@@ -25,6 +25,11 @@ import { transfersRouter } from './transfers/transfers.routes.js';
 import { debtsRouter } from './debts/debts.routes.js';
 import { forecastRouter } from './forecast/forecast.routes.js';
 import { savingsPlansRouter } from './savings/savings.routes.js';
+import {
+  notificationsRouter,
+  notificationPreferencesRouter,
+  pushSubscriptionsRouter,
+} from './notifications/notifications.routes.js';
 
 /**
  * Construction de l'application Express (sans démarrage réseau).
@@ -125,6 +130,14 @@ app.use('/savings-plans', requireAuth, savingsPlansRouter);
 // EXPLICITEMENT « avance » (OWED_TO_ME) crée une vraie Transaction INCOME
 // liée, atomiquement, via ce module.
 app.use('/debts', requireAuth, debtsRouter);
+
+// Notifications WEB (étape 12) : centre interne persistant + Web Push.
+// GET strictement read-only ; PATCH/POST/DELETE = mutations explicites de
+// l'utilisateur (marquer lu, préférences, abonnements navigateur). Aucune
+// écriture financière déclenchée par ces routes.
+app.use('/notifications', requireAuth, notificationsRouter);
+app.use('/notification-preferences', requireAuth, notificationPreferencesRouter);
+app.use('/push-subscriptions', requireAuth, pushSubscriptionsRouter);
 
 // Préférence de devise principale de l'utilisateur (protégée).
 app.patch('/me/preferences', requireAuth, async (req, res) => {

@@ -24,6 +24,10 @@ import type {
   MonthlyBudgetCreate,
   MonthlyBudgetMutationResponse,
   MonthlyBudgetsResponse,
+  NotificationPreferencePatch,
+  NotificationPreferencePublic,
+  NotificationReadResponse,
+  NotificationsListResponse,
   PlannedExpenseConfirmPaid,
   PlannedExpenseConfirmPaidResponse,
   PlannedExpenseCreate,
@@ -32,6 +36,10 @@ import type {
   PlannedExpensesResponse,
   PlannedExpenseUpdate,
   PublicUser,
+  PushConfig,
+  PushSubscriptionCreate,
+  PushSubscriptionPublic,
+  ReadAllNotificationsResponse,
   RecurringExpenseCreate,
   RecurringExpenseMutationResponse,
   RecurringExpensePublic,
@@ -636,6 +644,93 @@ export async function apiDeleteDebtSettlement(
   settlementId: string,
 ): Promise<void> {
   await request<void>(`/debts/${debtId}/settlements/${settlementId}`, {
+    method: 'DELETE',
+  });
+}
+
+// --- Notifications (étape 12) ----------------------------------------------
+
+export interface GetNotificationsQuery {
+  page?: number;
+  limit?: number;
+  unreadOnly?: boolean;
+}
+
+/** GET /notifications — centre interne paginé (read-only). */
+export async function apiGetNotifications(
+  query: GetNotificationsQuery = {},
+): Promise<NotificationsListResponse> {
+  const params = new URLSearchParams();
+  if (query.page) params.set('page', String(query.page));
+  if (query.limit) params.set('limit', String(query.limit));
+  if (query.unreadOnly) params.set('unreadOnly', 'true');
+  const qs = params.toString();
+  return request<NotificationsListResponse>(
+    `/notifications${qs ? `?${qs}` : ''}`,
+  );
+}
+
+/** PATCH /notifications/:id/read — lu du centre uniquement. */
+export async function apiMarkNotificationRead(
+  notificationId: string,
+): Promise<NotificationReadResponse> {
+  return request<NotificationReadResponse>(
+    `/notifications/${notificationId}/read`,
+    { method: 'PATCH' },
+  );
+}
+
+/** POST /notifications/read-all — tout marquer comme lu (centre). */
+export async function apiReadAllNotifications(): Promise<ReadAllNotificationsResponse> {
+  return request<ReadAllNotificationsResponse>('/notifications/read-all', {
+    method: 'POST',
+  });
+}
+
+/** GET /notification-preferences (read-only strict). */
+export async function apiGetNotificationPreferences(): Promise<NotificationPreferencePublic> {
+  return request<NotificationPreferencePublic>('/notification-preferences');
+}
+
+/** PATCH /notification-preferences (mutation EXPLICITE utilisateur). */
+export async function apiUpdateNotificationPreferences(
+  patch: NotificationPreferencePatch,
+): Promise<NotificationPreferencePublic> {
+  return request<NotificationPreferencePublic>('/notification-preferences', {
+    method: 'PATCH',
+    body: patch,
+  });
+}
+
+/** GET /notifications/push-config — jamais de clé privée. */
+export async function apiGetPushConfig(): Promise<PushConfig> {
+  return request<PushConfig>('/notifications/push-config');
+}
+
+/** GET /push-subscriptions — appareils de l'utilisateur (aucune clé). */
+export async function apiGetPushSubscriptions(): Promise<{
+  subscriptions: PushSubscriptionPublic[];
+}> {
+  return request<{ subscriptions: PushSubscriptionPublic[] }>(
+    '/push-subscriptions',
+  );
+}
+
+/** POST /push-subscriptions — enregistre le PushSubscription navigateur. */
+export async function apiCreatePushSubscription(
+  input: PushSubscriptionCreate,
+): Promise<{ subscription: PushSubscriptionPublic }> {
+  return request<{ subscription: PushSubscriptionPublic }>(
+    '/push-subscriptions',
+    { method: 'POST', body: input },
+  );
+}
+
+/** DELETE /push-subscriptions/:id — désactivation logique (own device). */
+export async function apiDeletePushSubscription(
+  subscriptionId: string,
+): Promise<void> {
+  await request<void>(`/push-subscriptions/${subscriptionId}`, {
     method: 'DELETE',
   });
 }

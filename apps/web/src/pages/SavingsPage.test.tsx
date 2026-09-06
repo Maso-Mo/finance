@@ -19,6 +19,7 @@ import {
   apiCreateSavingsPlan,
   apiDeleteSavingsPlan,
   apiGetAccounts,
+  apiGetNotifications,
   apiGetSavingsMonth,
   apiRefresh,
   apiUpdateSavingsPlan,
@@ -31,6 +32,7 @@ vi.mock('../auth/api', () => ({
   apiRegister: vi.fn(),
   setAccessToken: vi.fn(),
   apiGetAccounts: vi.fn(),
+  apiGetNotifications: vi.fn(),
   apiGetSavingsMonth: vi.fn(),
   apiCreateSavingsPlan: vi.fn(),
   apiUpdateSavingsPlan: vi.fn(),
@@ -152,6 +154,7 @@ function renderPage() {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(apiRefresh).mockResolvedValue(USER);
+  vi.mocked(apiGetNotifications).mockResolvedValue({ notifications: [], total: 0, page: 1, limit: 1, unreadCount: 0 });
   vi.mocked(apiGetAccounts).mockResolvedValue(DASHBOARD);
   vi.mocked(apiGetSavingsMonth).mockResolvedValue(viewOf({}));
 });

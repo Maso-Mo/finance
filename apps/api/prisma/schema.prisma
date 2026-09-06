@@ -139,26 +139,53 @@ enum DebtKind {
 
 /// Utilisateur de l'application (authentification email + mot de passe +
 /// devise principale).
+
+/// Type d'événement d'une notification interne (étape 12).
+///
+/// V1 volontairement restreinte : un rappel quotidien « à vérifier » par
+/// source. La période (due / overdue / fenêtre) est une INFO du rappel, jamais
+/// un statut métier — la SOURCE reste la seule vérité (PlannedExpense.status,
+/// ExpectedIncome.status, Debt.remaining dérivé).
+enum AppNotificationType {
+  PLANNED_EXPENSE_DUE
+  PLANNED_EXPENSE_OVERDUE
+  EXPECTED_INCOME_DUE
+  EXPECTED_INCOME_WINDOW
+  EXPECTED_INCOME_OVERDUE
+  DEBT_DUE
+  DEBT_OVERDUE
+}
+
+/// Étape d'envoi Web Push d'une livraison (par notification × abonnement).
+enum PushDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 model User {
-  id                 String                 @id @default(uuid()) @db.Uuid
-  email              String                 @unique
-  passwordHash       String
-  currency           Currency               @default(MGA)
-  createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
-  refreshSessions    RefreshSession[]
-  accounts           Account[]
-  transactions       Transaction[]
-  categories         Category[]
-  accountAdjustments AccountAdjustment[]
-  transfers          AccountTransfer[]
-  plannedExpenses    PlannedExpense[]
-  recurringExpenses  RecurringExpenseRule[]
-  expectedIncomes    ExpectedIncome[]
-  monthlyBudgets     MonthlyBudget[]
-  savingsPlans       MonthlySavingsPlan[]
-  debts              Debt[]
-  debtSettlements    DebtSettlement[]
+  id                     String                  @id @default(uuid()) @db.Uuid
+  email                  String                  @unique
+  passwordHash           String
+  currency               Currency                @default(MGA)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  refreshSessions        RefreshSession[]
+  accounts               Account[]
+  transactions           Transaction[]
+  categories             Category[]
+  accountAdjustments     AccountAdjustment[]
+  transfers              AccountTransfer[]
+  plannedExpenses        PlannedExpense[]
+  recurringExpenses      RecurringExpenseRule[]
+  expectedIncomes        ExpectedIncome[]
+  monthlyBudgets         MonthlyBudget[]
+  savingsPlans           MonthlySavingsPlan[]
+  debts                  Debt[]
+  debtSettlements        DebtSettlement[]
+  notificationPreference NotificationPreference?
+  notifications          AppNotification[]
+  pushSubscriptions      PushSubscription[]
 
   @@map("users")
 }
@@ -673,4 +700,126 @@ model DebtSettlement {
   @@index([userId, accountId])
   @@index([userId, deletedAt])
   @@map("debt_settlements")
+}
+
+/// Notification INTERNE persistante (étape 12) — centre de notifications.
+///
+/// ⚠ RÈGLE ABSOLUE : une notification n'est qu'un rappel INFORMATIF. Elle ne
+/// crée/modifie/supprime JAMAIS de Transaction, Transfert, Règlement,
+/// Ajustement, solde, budget, dépense planifiée, revenu attendu, dette ou
+/// contribution d'épargne. Les sources financières (PlannedExpense,
+/// ExpectedIncome, Debt, …) restent la SEULE vérité : aucun de leurs champs
+/// métier n'est dupliqué ici (pas de status, pas de remaining).
+///
+///  - `dedupeKey` UNIQUE = « au maximum UNE notification par
+///    (utilisateur × source × type d'événement × jour LOCAL) » — garanti au
+///    niveau BASE, indépendamment des passages concurrents du scheduler ;
+///  - `localDate` : jour LOCAL de l'utilisateur (colonne DATE) qui a déclenché
+///    le rappel quotidien (anti-spam : un scheduler relancé le même jour ne
+///    recrée rien) ;
+///  - `isRead` / `readAt` : LU/NON LU du CENTRE INTERNE uniquement — marquer
+///    lu ne confirme JAMAIS une dépense payée, un revenu reçu, etc. ;
+///  - `title` / `body` : texte du centre (peut montrer montants — l'utilisateur
+///    est authentifié) ; `route` : page ouverte au clic (/planned, /expected,
+///    /debts, …) — le clic ne déclenche AUCUNE action financière.
+model AppNotification {
+  id         String                     @id @default(uuid()) @db.Uuid
+  userId     String                     @db.Uuid
+  type       AppNotificationType
+  /// Famille de la source : PLANNED_EXPENSE | EXPECTED_INCOME | DEBT.
+  sourceType String                     @db.VarChar(40)
+  sourceId   String                     @db.Uuid
+  /// Jour LOCAL (YYYY-MM-DD) qui a produit le rappel (colonne DATE UTC minuit).
+  localDate  DateTime                   @db.Date
+  dedupeKey  String                     @unique @db.VarChar(255)
+  title      String
+  body       String
+  route      String                     @db.VarChar(255)
+  /// Texte PUSH pré-calculé à la génération si le push navigateur est actif
+  /// (générique par défaut, montant si showAmountsInPush). Null si aucun push.
+  pushBody   String?
+  isRead     Boolean                    @default(false)
+  readAt     DateTime?                  @db.Timestamp(3)
+  createdAt  DateTime                   @default(now())
+  user       User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries PushNotificationDelivery[]
+
+  @@index([userId, isRead, createdAt])
+  @@index([userId, localDate])
+  @@map("app_notifications")
+}
+
+/// Préférences de notifications d'un utilisateur (étape 12).
+///
+///  - `timezone` : timezone IANA du jour LOCAL de l'utilisateur (validée par
+///    Intl au niveau service → 400 si invalide). Jamais déduite du serveur ;
+///  - `browserPushEnabled` : consentement EXPLICITE aux notifications
+///    navigateur. Le centre interne fonctionne TOUJOURS, même false ;
+///  - `showAmountsInPush` : afficher les montants dans les push ? DÉFAUT false
+///    (confidentialité : écran verrouillé / salle partagée) ;
+///  - `localTime` : cadence quotidienne « HH:MM » (09:00 par défaut).
+model NotificationPreference {
+  userId             String   @id @db.Uuid
+  timezone           String   @db.VarChar(80)
+  browserPushEnabled Boolean  @default(false)
+  showAmountsInPush  Boolean  @default(false)
+  localTime          String   @default("09:00") @db.VarChar(5)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+/// Abonnement navigateur Web Push d'un utilisateur (étape 12).
+///
+///  - un utilisateur peut avoir PLUSIEURS abonnements (navigateurs/appareils) ;
+///  - `endpoint` UNIQUE au niveau base (même navigateur ré-enregistré) ;
+///  - `disabledAt` : désactivation LOGIQUE (404/410 du fournisseur Push, ou
+///    désabonnement explicite). On ne retente jamais un endpoint mort ;
+///  - les clés `p256dh`/`auth` ne sont JAMAIS exposées par l'API (ownership).
+model PushSubscription {
+  id         String                     @id @default(uuid()) @db.Uuid
+  userId     String                     @db.Uuid
+  endpoint   String                     @unique
+  p256dh     String
+  auth       String
+  disabledAt DateTime?                  @db.Timestamp(3)
+  createdAt  DateTime                   @default(now())
+  updatedAt  DateTime                   @updatedAt
+  user       User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries PushNotificationDelivery[]
+
+  @@index([userId])
+  @@index([userId, disabledAt])
+  @@map("push_subscriptions")
+}
+
+/// Livraison Web Push (étape 12) — anti-doublon et reprise contrôlée.
+///
+///  - `@@unique([notificationId, pushSubscriptionId])` : jamais deux envois
+///    accidentels du même rappel vers le même abonnement, même si le scheduler
+///    tourne 20 fois / est relancé en concurrence ;
+///  - le `payload` JSON stocké contient UNIQUEMENT le texte et la route à
+///    afficher (jamais de secret, jamais de JWT, jamais de donnée financière
+///    d'action) — il permet la reprise après redémarrage ;
+///  - `FAILED` → reprise contrôlée au passage suivant ; une erreur Push ne
+///    fait JAMAIS rollback d'une AppNotification ni d'une donnée financière.
+model PushNotificationDelivery {
+  id                 String             @id @default(uuid()) @db.Uuid
+  notificationId     String             @db.Uuid
+  pushSubscriptionId String             @db.Uuid
+  status             PushDeliveryStatus @default(PENDING)
+  payload            Json?
+  lastErrorCode      String?            @db.VarChar(40)
+  sentAt             DateTime?          @db.Timestamp(3)
+  failedAt           DateTime?          @db.Timestamp(3)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  notification       AppNotification    @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  pushSubscription   PushSubscription   @relation(fields: [pushSubscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, pushSubscriptionId])
+  @@index([status, pushSubscriptionId])
+  @@map("push_notification_deliveries")
 }
