@@ -16,7 +16,11 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "db:backfill-accounts": "tsx src/scripts/backfill-accounts.ts"
+    "db:backfill-accounts": "tsx src/scripts/backfill-accounts.ts",
+    "db:backup": "bash scripts/db-backup.sh",
+    "db:restore": "bash scripts/db-restore.sh",
+    "db:audit": "tsx src/scripts/db-audit.ts",
+    "db:perf-seed": "tsx src/scripts/perf-seed.ts"
   },
   "dependencies": {
     "@finance/finance-core": "workspace:*",

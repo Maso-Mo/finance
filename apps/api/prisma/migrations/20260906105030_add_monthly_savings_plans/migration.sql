@@ -42,8 +42,11 @@ ALTER TABLE "monthly_savings_plans" ADD CONSTRAINT "monthly_savings_plans_userId
 -- AddForeignKey
 ALTER TABLE "savings_contributions" ADD CONSTRAINT "savings_contributions_savingsPlanId_fkey" FOREIGN KEY ("savingsPlanId") REFERENCES "monthly_savings_plans"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- AddForeignKey
-ALTER TABLE "savings_contributions" ADD CONSTRAINT "savings_contributions_transferId_fkey" FOREIGN KEY ("transferId") REFERENCES "account_transfers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- ⚠ La FK savings_contributions.transferId → account_transfers a été créée ici à
+-- l'origine, mais account_transfers est créée par une migration POSTÉRIEURE
+-- (20260906120000_add_account_transfers) : l'installation FROM SCRATCH échouait.
+-- Elle est désormais ajoutée de façon différée et IDEMPOTENTE par la migration
+-- 20260906125000_add_savings_contribution_transfer_fk (après account_transfers).
 
 -- Contraintes métier au niveau BASE (au-delà du schéma Prisma) :
 --  1. AU PLUS UN plan ACTIF par (userId, month). PostgreSQL traite les NULL

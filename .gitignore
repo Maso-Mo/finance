@@ -22,6 +22,9 @@ apps/api/src/generated/
 npm-debug.log*
 pnpm-debug.log*
 
+# Sauvegardes de bases (jamais commitées : données financières)
+apps/api/prisma/backups/
+
 # Éditeurs / OS
 .vscode/
 .idea/

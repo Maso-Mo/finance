@@ -262,12 +262,46 @@ export default function TransactionForm({
   }
 
   function handleIncludeAccount(accountId: string, included: boolean) {
-    setDraft((previous) => ({
-      ...previous,
-      allocations: included
-        ? previous.allocations
-        : { ...previous.allocations, [accountId]: '' },
-    }));
+    setDraft((previous) => {
+      if (!included) {
+        return {
+          ...previous,
+          allocations: { ...previous.allocations, [accountId]: '' },
+        };
+      }
+      // Déjà alloué ? Rien à faire.
+      if ((previous.allocations[accountId] ?? '').trim() !== '') {
+        return previous;
+      }
+      // Pré-remplit le RESTE non alloué (montant total saisi moins les autres
+      // comptes) : sans montant total, on ne peut pas encore activer la ligne
+      // (l'utilisateur saisit d'abord le montant).
+      const totalCents = toCents(previous.amount.trim());
+      if (!totalCents || totalCents <= 0n) {
+        return previous;
+      }
+      let allocatedCents = 0n;
+      for (const [id, value] of Object.entries(previous.allocations)) {
+        if (id === accountId) {
+          continue;
+        }
+        const cents = toCents(value.trim());
+        if (cents) {
+          allocatedCents += cents;
+        }
+      }
+      const remainingCents = totalCents - allocatedCents;
+      if (remainingCents <= 0n) {
+        return previous;
+      }
+      return {
+        ...previous,
+        allocations: {
+          ...previous.allocations,
+          [accountId]: centsToString(remainingCents),
+        },
+      };
+    });
     setErrors([]);
   }
 
