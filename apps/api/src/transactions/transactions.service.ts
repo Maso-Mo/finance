@@ -251,13 +251,26 @@ export async function updateTransaction(
 ): Promise<TransactionPublic> {
   const existing = await prisma.transaction.findFirst({
     where: { id: transactionId, userId },
-    select: { id: true, deletedAt: true },
+    select: {
+      id: true,
+      deletedAt: true,
+      debtSettlement: { select: { id: true } },
+    },
   });
   if (!existing) {
     throw new ApiError(404, 'Transaction not found.');
   }
   if (existing.deletedAt) {
     throw new ApiError(409, 'A deleted transaction cannot be modified.');
+  }
+  if (existing.debtSettlement) {
+    // Étape 11 : Transaction INCOME créée par un règlement de type AVANCE
+    // (INCOME_ADVANCE_RECEIVABLE). Elle ne se modifie QUE via le module dettes
+    // (PATCH du règlement, répercuté en miroir), jamais en direct ici.
+    throw new ApiError(
+      409,
+      'This income is linked to a debt advance: manage it from the debts module.',
+    );
   }
 
   const allocations = input.allocations ?? [];
@@ -314,6 +327,23 @@ export async function deleteTransaction(
   userId: string,
   transactionId: string,
 ): Promise<void> {
+  // Étape 11 : la Transaction INCOME d'une AVANCE (INCOME_ADVANCE_RECEIVABLE)
+  // ne se supprime jamais en direct : elle disparaît via le module dettes
+  // (suppression du règlement → suppression logique ATOMIQUE des deux).
+  const linked = await prisma.transaction.findFirst({
+    where: { id: transactionId, userId },
+    select: { debtSettlement: { select: { id: true } } },
+  });
+  if (!linked) {
+    throw new ApiError(404, 'Transaction not found.');
+  }
+  if (linked.debtSettlement) {
+    throw new ApiError(
+      409,
+      'This income is linked to a debt advance: manage it from the debts module.',
+    );
+  }
+
   await prisma.$transaction(async (tx) => {
     const result = await tx.transaction.updateMany({
       where: { id: transactionId, userId, deletedAt: null },

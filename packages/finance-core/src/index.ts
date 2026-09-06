@@ -15,4 +15,5 @@ export * from './calendar.js';
 export * from './expected-income.js';
 export * from './budget.js';
 export * from './forecast.js';
+export * from './debt.js';
 

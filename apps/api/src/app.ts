@@ -22,6 +22,7 @@ import { expectedIncomesRouter } from './expected-incomes/expected-incomes.route
 import { incomeRemindersRouter } from './expected-incomes/income-reminders.routes.js';
 import { budgetsRouter } from './budgets/budgets.routes.js';
 import { transfersRouter } from './transfers/transfers.routes.js';
+import { debtsRouter } from './debts/debts.routes.js';
 import { forecastRouter } from './forecast/forecast.routes.js';
 import { savingsPlansRouter } from './savings/savings.routes.js';
 
@@ -117,6 +118,13 @@ app.use('/transfers', requireAuth, transfersRouter);
 // de l'argent. Seule une contribution (AccountTransfer RÉEL vers SAVINGS)
 // modifie le solde Épargne. GET strictement read-only.
 app.use('/savings-plans', requireAuth, savingsPlansRouter);
+
+// Dettes et créances (étape 11) : « je dois » / « on me doit » + règlements
+// partiels. Un règlement STANDARD n'impacte QUE le solde du compte (jamais
+// une Transaction EXPENSE/INCOME, jamais un budget). Seule une dette qualifiée
+// EXPLICITEMENT « avance » (OWED_TO_ME) crée une vraie Transaction INCOME
+// liée, atomiquement, via ce module.
+app.use('/debts', requireAuth, debtsRouter);
 
 // Préférence de devise principale de l'utilisateur (protégée).
 app.patch('/me/preferences', requireAuth, async (req, res) => {

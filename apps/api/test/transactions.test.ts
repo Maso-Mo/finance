@@ -64,6 +64,8 @@ async function getAccount(token: string, type: string) {
 }
 
 beforeAll(async () => {
+  await prisma.debtSettlement.deleteMany();
+  await prisma.debt.deleteMany();
   await prisma.transactionAccountAllocation.deleteMany();
   await prisma.accountAdjustment.deleteMany();
   await prisma.transaction.deleteMany();
@@ -79,6 +81,8 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  await prisma.debtSettlement.deleteMany();
+  await prisma.debt.deleteMany();
   await prisma.transactionAccountAllocation.deleteMany();
   await prisma.accountAdjustment.deleteMany();
   await prisma.transaction.deleteMany();

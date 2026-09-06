@@ -118,6 +118,25 @@ enum SavingsPlanMode {
   PERCENTAGE
 }
 
+/// Direction d'une dette / créance (étape 11). NE JAMAIS déduire le sens
+/// implicitement : tous les montants stockés restent POSITIFS, la direction
+/// porte le sens.
+///  - I_OWE      : JE dois de l'argent à quelqu'un (règlement = argent sortant) ;
+///  - OWED_TO_ME : quelqu'un ME doit de l'argent (règlement = entrant).
+enum DebtDirection {
+  I_OWE
+  OWED_TO_ME
+}
+
+/// Type d'une dette (étape 11). STANDARD par défaut. INCOME_ADVANCE_RECEIVABLE
+/// = « avance » UNIQUEMENT si l'utilisateur la qualifie EXPLICITEMENT ainsi, et
+/// UNIQUEMENT sur OWED_TO_ME (avance sur revenu/salaire réellement reçu) : la
+/// Transaction INCOME liée porte alors le +compte — JAMAIS le Settlement aussi.
+enum DebtKind {
+  STANDARD
+  INCOME_ADVANCE_RECEIVABLE
+}
+
 /// Utilisateur de l'application (authentification email + mot de passe +
 /// devise principale).
 model User {
@@ -138,6 +157,8 @@ model User {
   expectedIncomes    ExpectedIncome[]
   monthlyBudgets     MonthlyBudget[]
   savingsPlans       MonthlySavingsPlan[]
+  debts              Debt[]
+  debtSettlements    DebtSettlement[]
 
   @@map("users")
 }
@@ -207,6 +228,7 @@ model Account {
   adjustments       AccountAdjustment[]
   outgoingTransfers AccountTransfer[]              @relation("TransferSource")
   incomingTransfers AccountTransfer[]              @relation("TransferDestination")
+  debtSettlements   DebtSettlement[]
 
   // V1 : au plus un compte de chaque type par utilisateur.
   @@unique([userId, type])
@@ -251,6 +273,10 @@ model Transaction {
   // Relation 1-1 vers le revenu futur confirmé reçu (étape 7) : un même
   // ExpectedIncome ne peut générer qu'UNE seule Transaction INCOME active.
   receivedExpectedIncome  ExpectedIncome?                @relation("ExpectedIncomeReceive")
+  // Relation 1-1 vers le DebtSettlement « avance » qui a créé cette
+  // Transaction INCOME (étape 11) : le Settlement réduit la créance, la
+  // Transaction porte le +compte — jamais les deux.
+  debtSettlement          DebtSettlement?
 
   // userId redondant avec les allocations mais permet un scoping autorisé
   // simple et direct (requêtes par propriétaire sans jointure).
@@ -555,4 +581,96 @@ model SavingsContribution {
 
   @@index([savingsPlanId])
   @@map("savings_contributions")
+}
+
+/// Dette / créance (étape 11).
+///
+/// ⚠ INVARIANT : une fiche Debt décrit une OBLIGATION/CRÉANCE — elle ne bouge
+/// AUCUN argent. POST /debts ne crée aucune Transaction, aucun Settlement,
+/// aucun Transfer, aucun changement de solde (ex. ajouter une dette existante
+/// depuis 3 mois n'invente aucun mouvement historique).
+///
+///  - `direction` I_OWE / OWED_TO_ME porte le sens ; les montants stockés sont
+///    TOUJOURS POSITIFS (jamais de signe mélangé implicitement) ;
+///  - `originalAmount` est la SOURCE DE VÉRITÉ (strictement > 0, CHECK base) ;
+///    le RESTANT n'est JAMAIS stocké :
+///      remaining = originalAmount − Σ DebtSettlement actifs ;
+///  - le statut temporel (OPEN / SETTLED / OVERDUE) est TOUJOURS DÉRIVÉ en
+///    lecture, jamais persisté ;
+///  - `kind` INCOME_ADVANCE_RECEIVABLE (« avance ») n'existe QUE sur
+///    OWED_TO_ME (CHECK en base) et uniquement si l'utilisateur la qualifie
+///    EXPLICITEMENT ainsi — aucune détection automatique ;
+///  - suppression LOGIQUE (`deletedAt`) : refusée tant que des règlements
+///    actifs existent (jamais supprimer des mouvements financiers réels) ;
+///  - échéance : `dueDate` réelle (colonne DATE) XOR `dueDateUnknown`
+///    explicite (« je ne sais plus ») — jamais « aujourd'hui » implicitement.
+model Debt {
+  id               String           @id @default(uuid()) @db.Uuid
+  userId           String           @db.Uuid
+  direction        DebtDirection
+  kind             DebtKind         @default(STANDARD)
+  originalAmount   Decimal          @db.Decimal(20, 2)
+  currency         Currency         @default(MGA)
+  counterpartyName String?
+  description      String?
+  dueDate          DateTime?        @db.Date
+  dueDateUnknown   Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  deletedAt        DateTime?        @db.Timestamp(3)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  settlements      DebtSettlement[]
+
+  @@index([userId, direction])
+  @@index([userId, deletedAt])
+  @@map("debts")
+}
+
+/// Règlement d'une dette (étape 11) : somme RÉELLEMENT payée (I_OWE) ou reçue
+/// (OWED_TO_ME). Ce n'est NI une Transaction EXPENSE NI une Transaction
+/// INCOME : il n'impacte que le solde courant dérivé du compte concerné et la
+/// réduction du restant de la dette (un remboursement de PRINCIPAL n'est ni
+/// une dépense de consommation ni un revenu).
+///
+///  - montant stocké POSITIF, strictement > 0 (CHECK base) ; le signe du
+///    mouvement est porté par `debt.direction` ;
+///  - règle totale : Σ règlements actifs <= originalAmount (invariant
+///    TRANSACTIONNEL défendu sous verrou ligne — jamais un simple CHECK) ;
+///  - compte : `accountId` (appartient à l'utilisateur) XOR
+///    `accountUnknown: true` explicite (« je ne sais plus quel compte ») :
+///    le règlement réduit quand même le restant, aucun solde précis n'est
+///    modifié tant qu'aucun compte n'est renseigné ;
+///  - date : `occurredAt` (jour réel) XOR `dateUnknown: true` explicite —
+///    jamais « aujourd'hui » par défaut ;
+///  - suppression LOGIQUE (`deletedAt`) : il ne compte plus dans le réglé, le
+///    remaining remonte, son impact solde disparaît. `originalAmount` n'est
+///    jamais modifié ;
+///  - CAS AVANCE (`INCOME_ADVANCE_RECEIVABLE`) : le règlement est créé
+///    ATOMIQUEMENT avec une Transaction INCOME réelle liée
+///    (`linkedTransactionId` UNIQUE) qui porte le +compte — le Settlement sert
+///    uniquement à réduire la créance. JAMAIS les deux (aucun double comptage).
+model DebtSettlement {
+  id                  String       @id @default(uuid()) @db.Uuid
+  debtId              String       @db.Uuid
+  userId              String       @db.Uuid
+  amount              Decimal      @db.Decimal(20, 2)
+  currency            Currency     @default(MGA)
+  accountId           String?      @db.Uuid
+  accountUnknown      Boolean      @default(false)
+  occurredAt          DateTime?    @db.Timestamp(3)
+  dateUnknown         Boolean      @default(false)
+  description         String?
+  linkedTransactionId String?      @unique @db.Uuid
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  deletedAt           DateTime?    @db.Timestamp(3)
+  debt                Debt         @relation(fields: [debtId], references: [id], onDelete: Restrict)
+  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account             Account?     @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  linkedTransaction   Transaction? @relation(fields: [linkedTransactionId], references: [id], onDelete: Restrict)
+
+  @@index([debtId, deletedAt])
+  @@index([userId, accountId])
+  @@index([userId, deletedAt])
+  @@map("debt_settlements")
 }

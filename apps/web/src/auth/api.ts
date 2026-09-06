@@ -4,6 +4,14 @@ import type {
   CategoriesResponse,
   Currency,
   DashboardResponse,
+  DebtCreate,
+  DebtMutationResponse,
+  DebtPublic,
+  DebtSettlementCreate,
+  DebtSettlementMutationResponse,
+  DebtSettlementUpdate,
+  DebtsResponse,
+  DebtUpdate,
   ExpectedIncomeConfirmReceived,
   ExpectedIncomeConfirmReceivedResponse,
   ExpectedIncomeCreate,
@@ -558,10 +566,85 @@ export async function apiAddSavingsContribution(
   );
 }
 
+// --- Dettes et créances (étape 11) ---
+
+/**
+ * Toutes les dettes ACTIVES (« je dois » + « on me doit »), avec le restant
+ * TOUJOURS dérivé et l'historique des règlements partiels. Read-only.
+ */
+export async function apiGetDebts(): Promise<DebtsResponse> {
+  return request<DebtsResponse>('/debts');
+}
+
+/** Crée une dette/créance. Aucun impact comptable à la création. */
+export async function apiCreateDebt(
+  input: DebtCreate,
+): Promise<DebtMutationResponse> {
+  return request<DebtMutationResponse>('/debts', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+/** Modifie une dette active (montant, nom, échéance…). */
+export async function apiUpdateDebt(
+  debtId: string,
+  input: DebtUpdate,
+): Promise<DebtMutationResponse> {
+  return request<DebtMutationResponse>(`/debts/${debtId}`, {
+    method: 'PATCH',
+    body: input,
+  });
+}
+
+/** Supprime logiquement une dette : elle disparaît des vues. */
+export async function apiDeleteDebt(debtId: string): Promise<void> {
+  await request<void>(`/debts/${debtId}`, { method: 'DELETE' });
+}
+
+/**
+ * Enregistre un règlement partiel/total réellement effectué. STANDARD :
+ * n'impacte QUE le solde du compte (jamais une Transaction EXPENSE/INCOME).
+ * Si la dette est une « avance » (OWED_TO_ME), la Transaction INCOME réelle
+ * est créée atomiquement par le backend.
+ */
+export async function apiAddDebtSettlement(
+  debtId: string,
+  input: DebtSettlementCreate,
+): Promise<DebtSettlementMutationResponse> {
+  return request<DebtSettlementMutationResponse>(
+    `/debts/${debtId}/settlements`,
+    { method: 'POST', body: input },
+  );
+}
+
+/** Corrige un règlement (montant, compte, date) — soldes recalculés. */
+export async function apiUpdateDebtSettlement(
+  debtId: string,
+  settlementId: string,
+  input: DebtSettlementUpdate,
+): Promise<DebtSettlementMutationResponse> {
+  return request<DebtSettlementMutationResponse>(
+    `/debts/${debtId}/settlements/${settlementId}`,
+    { method: 'PATCH', body: input },
+  );
+}
+
+/** Annule logiquement un règlement : son impact comptable disparaît. */
+export async function apiDeleteDebtSettlement(
+  debtId: string,
+  settlementId: string,
+): Promise<void> {
+  await request<void>(`/debts/${debtId}/settlements/${settlementId}`, {
+    method: 'DELETE',
+  });
+}
+
 export type {
   ExpectedIncomePublic,
   PlannedExpensePublic,
   RecurringExpensePublic,
+  DebtPublic,
 };
 
 

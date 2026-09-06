@@ -152,6 +152,8 @@ beforeAll(async () => {
   await prisma.savingsContribution.deleteMany();
   await prisma.monthlySavingsPlan.deleteMany();
   await prisma.accountTransfer.deleteMany();
+  await prisma.debtSettlement.deleteMany();
+  await prisma.debt.deleteMany();
   await prisma.transactionAccountAllocation.deleteMany();
   await prisma.accountAdjustment.deleteMany();
   await prisma.transaction.deleteMany();
@@ -171,6 +173,8 @@ beforeEach(async () => {
   await prisma.savingsContribution.deleteMany();
   await prisma.monthlySavingsPlan.deleteMany();
   await prisma.accountTransfer.deleteMany();
+  await prisma.debtSettlement.deleteMany();
+  await prisma.debt.deleteMany();
   await prisma.transactionAccountAllocation.deleteMany();
   await prisma.accountAdjustment.deleteMany();
   await prisma.transaction.deleteMany();

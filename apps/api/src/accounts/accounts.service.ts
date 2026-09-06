@@ -49,11 +49,13 @@ function toPublic(account: AccountRow, balance: Money): AccountPublic {
 
 /** Convertit une agrégation groupBy (par compte) en Map compte → Decimal. */
 function indexSum(
-  groups: { accountId: string; sum: string | null }[],
+  groups: { accountId: string | null; sum: string | null }[],
 ): Map<string, Money> {
   const map = new Map<string, Money>();
   for (const group of groups) {
-    map.set(group.accountId, toMoney(group.sum ?? '0'));
+    if (group.accountId !== null) {
+      map.set(group.accountId, toMoney(group.sum ?? '0'));
+    }
   }
   return map;
 }
@@ -80,34 +82,70 @@ export async function getDashboard(userId: string): Promise<{
   // dépenses actives, ajustements (déjà signés), transferts actifs sortants
   // (débit = amount + fee) et entrants (crédit = amount). Agrégation groupBy :
   // on ne charge jamais tout l'historique des transferts en mémoire.
-  const [incomeGroups, expenseGroups, adjustmentGroups, outgoingTransferGroups, incomingTransferGroups] =
-    await Promise.all([
-      prisma.transactionAccountAllocation.groupBy({
-        by: ['accountId'],
-        where: { transaction: { userId, type: 'INCOME', deletedAt: null } },
-        _sum: { amount: true },
-      }),
-      prisma.transactionAccountAllocation.groupBy({
-        by: ['accountId'],
-        where: { transaction: { userId, type: 'EXPENSE', deletedAt: null } },
-        _sum: { amount: true },
-      }),
-      prisma.accountAdjustment.groupBy({
-        by: ['accountId'],
-        where: { userId },
-        _sum: { amount: true },
-      }),
-      prisma.accountTransfer.groupBy({
-        by: ['sourceAccountId'],
-        where: { userId, deletedAt: null },
-        _sum: { amount: true, feeAmount: true },
-      }),
-      prisma.accountTransfer.groupBy({
-        by: ['destinationAccountId'],
-        where: { userId, deletedAt: null },
-        _sum: { amount: true },
-      }),
-    ]);
+  // Dettes (étape 11) : règlements STANDARD actifs — crédités (+amount pour
+  // OWED_TO_ME) et payés (−amount pour I_OWE). Les règlements de type AVANCE
+  // sont EXCLUS ici : leur +compte est porté par la Transaction INCOME liée
+  // (comptée dans `incomeGroups` ci-dessus), jamais par le règlement.
+  const [
+    incomeGroups,
+    expenseGroups,
+    adjustmentGroups,
+    outgoingTransferGroups,
+    incomingTransferGroups,
+    repaymentsReceivedGroups,
+    repaymentsPaidGroups,
+  ] = await Promise.all([
+    prisma.transactionAccountAllocation.groupBy({
+      by: ['accountId'],
+      where: { transaction: { userId, type: 'INCOME', deletedAt: null } },
+      _sum: { amount: true },
+    }),
+    prisma.transactionAccountAllocation.groupBy({
+      by: ['accountId'],
+      where: { transaction: { userId, type: 'EXPENSE', deletedAt: null } },
+      _sum: { amount: true },
+    }),
+    prisma.accountAdjustment.groupBy({
+      by: ['accountId'],
+      where: { userId },
+      _sum: { amount: true },
+    }),
+    prisma.accountTransfer.groupBy({
+      by: ['sourceAccountId'],
+      where: { userId, deletedAt: null },
+      _sum: { amount: true, feeAmount: true },
+    }),
+    prisma.accountTransfer.groupBy({
+      by: ['destinationAccountId'],
+      where: { userId, deletedAt: null },
+      _sum: { amount: true },
+    }),
+    prisma.debtSettlement.groupBy({
+      by: ['accountId'],
+      where: {
+        userId,
+        deletedAt: null,
+        accountId: { not: null },
+        debt: {
+          userId,
+          deletedAt: null,
+          kind: 'STANDARD',
+          direction: 'OWED_TO_ME',
+        },
+      },
+      _sum: { amount: true },
+    }),
+    prisma.debtSettlement.groupBy({
+      by: ['accountId'],
+      where: {
+        userId,
+        deletedAt: null,
+        accountId: { not: null },
+        debt: { userId, deletedAt: null, kind: 'STANDARD', direction: 'I_OWE' },
+      },
+      _sum: { amount: true },
+    }),
+  ]);
 
   const incomes = indexSum(
     incomeGroups.map((g) => ({
@@ -123,6 +161,19 @@ export async function getDashboard(userId: string): Promise<{
   );
   const adjustments = indexSum(
     adjustmentGroups.map((g) => ({
+      accountId: g.accountId,
+      sum: g._sum.amount?.toString() ?? '0',
+    })),
+  );
+  // Règlements de dettes STANDARD actifs : reçus (+amount) et payés (−amount).
+  const repaymentsReceived = indexSum(
+    repaymentsReceivedGroups.map((g) => ({
+      accountId: g.accountId,
+      sum: g._sum.amount?.toString() ?? '0',
+    })),
+  );
+  const repaymentsPaid = indexSum(
+    repaymentsPaidGroups.map((g) => ({
       accountId: g.accountId,
       sum: g._sum.amount?.toString() ?? '0',
     })),
@@ -156,12 +207,18 @@ export async function getDashboard(userId: string): Promise<{
       outgoingDebits.get(row.id) ?? '0',
       incomingCredits.get(row.id) ?? '0',
     );
-    // currentBalance (initial + journal + ajustements) puis deltas transferts.
+    const repaymentsNet = (repaymentsReceived.get(row.id) ?? toMoney('0')).minus(
+      repaymentsPaid.get(row.id) ?? toMoney('0'),
+    );
+    // currentBalance (initial + journal + ajustements) puis deltas transferts
+    // et règlements de dettes (étape 11).
     const balance = currentBalance(
       starting,
       net,
       adjustments.get(row.id) ?? toMoney('0'),
-    ).plus(transferNet);
+    )
+      .plus(transferNet)
+      .plus(repaymentsNet);
     return toPublic(row, balance);
   });
 
@@ -197,7 +254,7 @@ export async function setAccountTargetBalance(
     throw new ApiError(404, 'Account not found.');
   }
 
-  const [activeAllocations, adjustmentCount, activeTransferCount] =
+  const [activeAllocations, adjustmentCount, activeTransferCount, activeSettlementCount] =
     await Promise.all([
       prisma.transactionAccountAllocation.count({
         where: { accountId, transaction: { userId, deletedAt: null } },
@@ -213,12 +270,21 @@ export async function setAccountTargetBalance(
           ],
         },
       }),
+      // Règlements de dettes actifs touchant CE compte (étape 11) : un solde
+      // issu d'un remboursement ne redevient jamais un solde de départ.
+      prisma.debtSettlement.count({
+        where: { accountId, userId, deletedAt: null },
+      }),
     ]);
-  // Un « mouvement » = transaction active, transfert actif ou ajustement déjà
-  // présent. Dès qu'il existe un mouvement, le solde de départ ne se modifie
-  // plus : la déclaration d'un solde réel crée un AccountAdjustment.
+  // Un « mouvement » = transaction active, transfert actif, règlement de dette
+  // actif ou ajustement déjà présent. Dès qu'il existe un mouvement, le solde
+  // de départ ne se modifie plus : la déclaration d'un solde réel crée un
+  // AccountAdjustment.
   const hasMovement =
-    activeAllocations > 0 || adjustmentCount > 0 || activeTransferCount > 0;
+    activeAllocations > 0 ||
+    adjustmentCount > 0 ||
+    activeTransferCount > 0 ||
+    activeSettlementCount > 0;
 
   if (!hasMovement) {
     // Aucun mouvement : le solde de départ reste modifiable directement.

@@ -27,6 +27,8 @@ beforeAll(async () => {
   // Base de test dédiée : on repart d'un état vide et déterministe.
   await prisma.refreshSession.deleteMany();
   await prisma.accountTransfer.deleteMany();
+  await prisma.debtSettlement.deleteMany();
+  await prisma.debt.deleteMany();
   await prisma.user.deleteMany();
 });
 

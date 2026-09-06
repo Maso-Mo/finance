@@ -30,6 +30,8 @@ async function register(email: string): Promise<string> {
 beforeAll(async () => {
   await prisma.refreshSession.deleteMany();
   await prisma.accountTransfer.deleteMany();
+  await prisma.debtSettlement.deleteMany();
+  await prisma.debt.deleteMany();
   await prisma.user.deleteMany();
 
   tokenA = await register('account-a@example.com');
