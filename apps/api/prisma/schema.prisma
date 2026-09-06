@@ -120,6 +120,7 @@ model User {
   transactions       Transaction[]
   categories         Category[]
   accountAdjustments AccountAdjustment[]
+  transfers          AccountTransfer[]
   plannedExpenses    PlannedExpense[]
   recurringExpenses  RecurringExpenseRule[]
   expectedIncomes    ExpectedIncome[]
@@ -181,16 +182,18 @@ model Category {
 ///
 /// Montants stockés en NUMERIC (Decimal Prisma), jamais en flottant.
 model Account {
-  id             String                         @id @default(uuid()) @db.Uuid
-  userId         String                         @db.Uuid
-  type           AccountType
-  currency       Currency
-  initialBalance Decimal                        @default(0) @db.Decimal(20, 2)
-  createdAt      DateTime                       @default(now())
-  updatedAt      DateTime                       @updatedAt
-  user           User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  allocations    TransactionAccountAllocation[]
-  adjustments    AccountAdjustment[]
+  id                String                         @id @default(uuid()) @db.Uuid
+  userId            String                         @db.Uuid
+  type              AccountType
+  currency          Currency
+  initialBalance    Decimal                        @default(0) @db.Decimal(20, 2)
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @updatedAt
+  user              User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  allocations       TransactionAccountAllocation[]
+  adjustments       AccountAdjustment[]
+  outgoingTransfers AccountTransfer[]              @relation("TransferSource")
+  incomingTransfers AccountTransfer[]              @relation("TransferDestination")
 
   // V1 : au plus un compte de chaque type par utilisateur.
   @@unique([userId, type])
@@ -431,4 +434,48 @@ model MonthlyBudget {
 
   @@index([userId, month])
   @@map("monthly_budgets")
+}
+
+/// Transfert INTERNE RÉEL déjà effectué entre deux comptes de l'utilisateur
+/// (étape 9). L'application est un JOURNAL DE SUIVI, pas une banque :
+///  - elle enregistre un transfert que l'utilisateur a réellement exécuté
+///    (MVola, banque, cash…) ; elle ne déplace jamais d'argent elle-même ;
+///  - un Transfer n'est NI une Transaction EXPENSE sur la source NI une
+///    Transaction INCOME sur la destination : il n'apparaît dans AUCUN budget,
+///    AUCUN `spent`, AUCUN `spendingForecast`, AUCUNE catégorie. Seul le solde
+///    courant dérivé des comptes en tient compte ;
+///  - `amount` = SOMME CRÉDITÉE sur le compte destination (strictement > 0) ;
+///  - `feeAmount` = frais (V1) TOUJOURS prélevés EN PLUS sur la source
+///    (>= 0 ; 0 = aucun frais). Impact : source −(amount + fee), destination
+///    +amount ;
+///  - un même compte source et destination est interdit (CHECK en base) ;
+///  - date : `occurredAt` (jour réel) OU `dateUnknown: true` explicite
+///    (« je ne sais plus »). Jamais « aujourd'hui » par défaut ;
+///  - suppression LOGIQUE (`deletedAt`) : le transfert disparaît de
+///    l'historique et n'impacte plus les soldes ; la ligne reste en base ;
+///  - `currency` = devise principale de l'utilisateur (V1 : aucune conversion).
+model AccountTransfer {
+  id                   String    @id @default(uuid()) @db.Uuid
+  userId               String    @db.Uuid
+  sourceAccountId      String    @db.Uuid
+  destinationAccountId String    @db.Uuid
+  amount               Decimal   @db.Decimal(20, 2)
+  feeAmount            Decimal   @default(0) @db.Decimal(20, 2)
+  currency             Currency  @default(MGA)
+  // Jour réel (composante horaire neutre), ou null si date inconnue.
+  occurredAt           DateTime? @db.Timestamp(3)
+  dateUnknown          Boolean   @default(false)
+  description          String?
+  deletedAt            DateTime? @db.Timestamp(3)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceAccount        Account   @relation("TransferSource", fields: [sourceAccountId], references: [id], onDelete: Restrict)
+  destinationAccount   Account   @relation("TransferDestination", fields: [destinationAccountId], references: [id], onDelete: Restrict)
+
+  @@index([userId, deletedAt])
+  @@index([userId, occurredAt])
+  @@index([userId, sourceAccountId])
+  @@index([userId, destinationAccountId])
+  @@map("account_transfers")
 }

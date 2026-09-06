@@ -96,6 +96,7 @@ beforeAll(async () => {
   await prisma.transactionAccountAllocation.deleteMany();
   await prisma.accountAdjustment.deleteMany();
   await prisma.transaction.deleteMany();
+  await prisma.accountTransfer.deleteMany();
   await prisma.user.deleteMany();
 
   tokenA = await register('income-a@example.com');

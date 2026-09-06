@@ -21,6 +21,7 @@ import { remindersRouter } from './reminders/reminders.routes.js';
 import { expectedIncomesRouter } from './expected-incomes/expected-incomes.routes.js';
 import { incomeRemindersRouter } from './expected-incomes/income-reminders.routes.js';
 import { budgetsRouter } from './budgets/budgets.routes.js';
+import { transfersRouter } from './transfers/transfers.routes.js';
 import { forecastRouter } from './forecast/forecast.routes.js';
 
 /**
@@ -104,6 +105,12 @@ app.use('/budgets', requireAuth, budgetsRouter);
 // strictement read-only — comptes + PlannedExpense + ExpectedIncome, jamais
 // une écriture. À distinguer du spendingForecast de /budgets (dépenses).
 app.use('/forecast', requireAuth, forecastRouter);
+
+// Transferts internes RÉELS entre les comptes de l'utilisateur (étape 9) :
+// un modèle DÉDIÉ — JAMAIS une « dépense source + revenu destination ». GET
+// strictement read-only ; POST/PATCH/DELETE ne créent/modifient/suppriment
+// AUCUNE Transaction EXPENSE/INCOME.
+app.use('/transfers', requireAuth, transfersRouter);
 
 // Préférence de devise principale de l'utilisateur (protégée).
 app.patch('/me/preferences', requireAuth, async (req, res) => {

@@ -4,6 +4,7 @@ import {
   currentBalance,
   sumAvailableBalance,
   toMoney,
+  transferNetFromTotals,
   type Money,
 } from '@finance/finance-core';
 import type { AccountPublic, Currency } from '@finance/shared-types';
@@ -15,7 +16,9 @@ import type { AccountPublic, Currency } from '@finance/shared-types';
  *
  * Solde courant DÉRIVÉ (jamais stocké) :
  *   initialBalance + revenus actifs alloués − dépenses actives allouées
- *   + ajustements de solde (AccountAdjustment).
+ *   + ajustements de solde (AccountAdjustment)
+ *   + transferts internes actifs (entrants − sortants, fee inclus sur la
+ *   source) — étape 9 (AccountTransfer).
  *
  * ⚠ Décision backend : quand l'utilisateur déclare « je veux que le solde
  * connu devienne X », le serveur choisit :
@@ -74,24 +77,37 @@ export async function getDashboard(userId: string): Promise<{
   });
 
   // Sommes exactes en base (NUMERIC), par compte et par nature : revenus actifs,
-  // dépenses actives, ajustements (déjà signés).
-  const [incomeGroups, expenseGroups, adjustmentGroups] = await Promise.all([
-    prisma.transactionAccountAllocation.groupBy({
-      by: ['accountId'],
-      where: { transaction: { userId, type: 'INCOME', deletedAt: null } },
-      _sum: { amount: true },
-    }),
-    prisma.transactionAccountAllocation.groupBy({
-      by: ['accountId'],
-      where: { transaction: { userId, type: 'EXPENSE', deletedAt: null } },
-      _sum: { amount: true },
-    }),
-    prisma.accountAdjustment.groupBy({
-      by: ['accountId'],
-      where: { userId },
-      _sum: { amount: true },
-    }),
-  ]);
+  // dépenses actives, ajustements (déjà signés), transferts actifs sortants
+  // (débit = amount + fee) et entrants (crédit = amount). Agrégation groupBy :
+  // on ne charge jamais tout l'historique des transferts en mémoire.
+  const [incomeGroups, expenseGroups, adjustmentGroups, outgoingTransferGroups, incomingTransferGroups] =
+    await Promise.all([
+      prisma.transactionAccountAllocation.groupBy({
+        by: ['accountId'],
+        where: { transaction: { userId, type: 'INCOME', deletedAt: null } },
+        _sum: { amount: true },
+      }),
+      prisma.transactionAccountAllocation.groupBy({
+        by: ['accountId'],
+        where: { transaction: { userId, type: 'EXPENSE', deletedAt: null } },
+        _sum: { amount: true },
+      }),
+      prisma.accountAdjustment.groupBy({
+        by: ['accountId'],
+        where: { userId },
+        _sum: { amount: true },
+      }),
+      prisma.accountTransfer.groupBy({
+        by: ['sourceAccountId'],
+        where: { userId, deletedAt: null },
+        _sum: { amount: true, feeAmount: true },
+      }),
+      prisma.accountTransfer.groupBy({
+        by: ['destinationAccountId'],
+        where: { userId, deletedAt: null },
+        _sum: { amount: true },
+      }),
+    ]);
 
   const incomes = indexSum(
     incomeGroups.map((g) => ({
@@ -112,16 +128,40 @@ export async function getDashboard(userId: string): Promise<{
     })),
   );
 
+  // Délta agrégé des transferts actifs par compte (finance-core) :
+  //  - sortant : le compte a été débité de Σ(amount + fee) ;
+  //  - entrant : le compte a été crédité de Σ(amount).
+  const outgoingDebits = new Map<string, Money>();
+  for (const group of outgoingTransferGroups) {
+    outgoingDebits.set(
+      group.sourceAccountId,
+      toMoney(group._sum.amount?.toString() ?? '0').plus(
+        toMoney(group._sum.feeAmount?.toString() ?? '0'),
+      ),
+    );
+  }
+  const incomingCredits = indexSum(
+    incomingTransferGroups.map((g) => ({
+      accountId: g.destinationAccountId,
+      sum: g._sum.amount?.toString() ?? '0',
+    })),
+  );
+
   const accounts: AccountPublic[] = rows.map((row) => {
     const starting = toMoney(row.initialBalance.toString());
     const net = (incomes.get(row.id) ?? toMoney('0')).minus(
       expenses.get(row.id) ?? toMoney('0'),
     );
+    const transferNet = transferNetFromTotals(
+      outgoingDebits.get(row.id) ?? '0',
+      incomingCredits.get(row.id) ?? '0',
+    );
+    // currentBalance (initial + journal + ajustements) puis deltas transferts.
     const balance = currentBalance(
       starting,
       net,
       adjustments.get(row.id) ?? toMoney('0'),
-    );
+    ).plus(transferNet);
     return toPublic(row, balance);
   });
 
@@ -157,13 +197,28 @@ export async function setAccountTargetBalance(
     throw new ApiError(404, 'Account not found.');
   }
 
-  const [activeAllocations, adjustmentCount] = await Promise.all([
-    prisma.transactionAccountAllocation.count({
-      where: { accountId, transaction: { userId, deletedAt: null } },
-    }),
-    prisma.accountAdjustment.count({ where: { accountId, userId } }),
-  ]);
-  const hasMovement = activeAllocations > 0 || adjustmentCount > 0;
+  const [activeAllocations, adjustmentCount, activeTransferCount] =
+    await Promise.all([
+      prisma.transactionAccountAllocation.count({
+        where: { accountId, transaction: { userId, deletedAt: null } },
+      }),
+      prisma.accountAdjustment.count({ where: { accountId, userId } }),
+      prisma.accountTransfer.count({
+        where: {
+          userId,
+          deletedAt: null,
+          OR: [
+            { sourceAccountId: accountId },
+            { destinationAccountId: accountId },
+          ],
+        },
+      }),
+    ]);
+  // Un « mouvement » = transaction active, transfert actif ou ajustement déjà
+  // présent. Dès qu'il existe un mouvement, le solde de départ ne se modifie
+  // plus : la déclaration d'un solde réel crée un AccountAdjustment.
+  const hasMovement =
+    activeAllocations > 0 || adjustmentCount > 0 || activeTransferCount > 0;
 
   if (!hasMovement) {
     // Aucun mouvement : le solde de départ reste modifiable directement.

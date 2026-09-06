@@ -26,6 +26,7 @@ function getRefreshToken(res: request.Response): string {
 beforeAll(async () => {
   // Base de test dédiée : on repart d'un état vide et déterministe.
   await prisma.refreshSession.deleteMany();
+  await prisma.accountTransfer.deleteMany();
   await prisma.user.deleteMany();
 });
 

@@ -33,6 +33,10 @@ import type {
   TransactionMutationResponse,
   TransactionsResponse,
   TransactionUpsert,
+  TransferCreate,
+  TransferMutationResponse,
+  TransfersResponse,
+  TransferUpdate,
 } from '@finance/shared-types';
 
 /**
@@ -450,6 +454,49 @@ export async function apiGetForecast(
   today: string,
 ): Promise<FinancialForecastResponse> {
   return request<FinancialForecastResponse>(`/forecast?today=${today}`);
+}
+
+// --- Transferts internes réels (étape 9) ---
+
+/**
+ * Historique paginé des transferts ACTIFS de l'utilisateur. STRICTEMENT
+ * read-only côté API : aucun transfert n'est créé par un GET.
+ */
+export async function apiGetTransfers(
+  page = 1,
+  limit = 20,
+): Promise<TransfersResponse> {
+  return request<TransfersResponse>(`/transfers?page=${page}&limit=${limit}`);
+}
+
+/**
+ * Enregistre un transfert RÉEL déjà effectué entre deux comptes de
+ * l'utilisateur. Aucune Transaction EXPENSE/INCOME n'est créée : seul le
+ * solde courant dérivé des comptes en tient compte.
+ */
+export async function apiCreateTransfer(
+  input: TransferCreate,
+): Promise<TransferMutationResponse> {
+  return request<TransferMutationResponse>('/transfers', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+/** Modifie un transfert existant (remplacement atomique complet). */
+export async function apiUpdateTransfer(
+  transferId: string,
+  input: TransferUpdate,
+): Promise<TransferMutationResponse> {
+  return request<TransferMutationResponse>(`/transfers/${transferId}`, {
+    method: 'PATCH',
+    body: input,
+  });
+}
+
+/** Supprime logiquement un transfert (deletedAt) : les soldes reviennent. */
+export async function apiDeleteTransfer(transferId: string): Promise<void> {
+  await request<void>(`/transfers/${transferId}`, { method: 'DELETE' });
 }
 
 export type {

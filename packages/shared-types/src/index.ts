@@ -12,6 +12,7 @@ export * from './auth.js';
 export * from './account.js';
 export * from './categories.js';
 export * from './transaction.js';
+export * from './transfer.js';
 export * from './planned.js';
 export * from './income.js';
 export * from './budget.js';

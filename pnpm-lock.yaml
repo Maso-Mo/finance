@@ -95,6 +95,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@finance/finance-core':
+        specifier: workspace:*
+        version: link:../../packages/finance-core
       '@finance/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
