@@ -7,6 +7,7 @@ import PlannedExpensesPage from './pages/PlannedExpensesPage';
 import ExpectedIncomesPage from './pages/ExpectedIncomesPage';
 import BudgetsPage from './pages/BudgetsPage';
 import TransfersPage from './pages/TransfersPage';
+import SavingsPage from './pages/SavingsPage';
 
 /**
  * Routage minimal : login / register / pages protégées (accueil, transactions,
@@ -23,6 +24,7 @@ export default function App() {
       <Route path="/expected" element={<ExpectedIncomesPage />} />
       <Route path="/budgets" element={<BudgetsPage />} />
       <Route path="/transfers" element={<TransfersPage />} />
+      <Route path="/savings" element={<SavingsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

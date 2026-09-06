@@ -106,6 +106,18 @@ enum ExpectedIncomeStatus {
   CANCELED
 }
 
+/// Mode d'un PLAN D'ÉPARGNE MENSUEL (étape 10).
+///
+///  - FIXED      : objectif mensuel fixe (`fixedAmount`), ex. 100 000 Ar ;
+///  - PERCENTAGE : objectif DÉRIVÉ = pourcentage des revenus RÉELLEMENT reçus
+///    (Transactions INCOME actives du mois). Le pourcentage ne se base JAMAIS
+///    sur un ExpectedIncome PENDING, un transfert, un ajustement ou une
+///    prévision.
+enum SavingsPlanMode {
+  FIXED
+  PERCENTAGE
+}
+
 /// Utilisateur de l'application (authentification email + mot de passe +
 /// devise principale).
 model User {
@@ -125,6 +137,7 @@ model User {
   recurringExpenses  RecurringExpenseRule[]
   expectedIncomes    ExpectedIncome[]
   monthlyBudgets     MonthlyBudget[]
+  savingsPlans       MonthlySavingsPlan[]
 
   @@map("users")
 }
@@ -455,27 +468,91 @@ model MonthlyBudget {
 ///    l'historique et n'impacte plus les soldes ; la ligne reste en base ;
 ///  - `currency` = devise principale de l'utilisateur (V1 : aucune conversion).
 model AccountTransfer {
-  id                   String    @id @default(uuid()) @db.Uuid
-  userId               String    @db.Uuid
-  sourceAccountId      String    @db.Uuid
-  destinationAccountId String    @db.Uuid
-  amount               Decimal   @db.Decimal(20, 2)
-  feeAmount            Decimal   @default(0) @db.Decimal(20, 2)
-  currency             Currency  @default(MGA)
+  id                   String               @id @default(uuid()) @db.Uuid
+  userId               String               @db.Uuid
+  sourceAccountId      String               @db.Uuid
+  destinationAccountId String               @db.Uuid
+  amount               Decimal              @db.Decimal(20, 2)
+  feeAmount            Decimal              @default(0) @db.Decimal(20, 2)
+  currency             Currency             @default(MGA)
   // Jour réel (composante horaire neutre), ou null si date inconnue.
-  occurredAt           DateTime? @db.Timestamp(3)
-  dateUnknown          Boolean   @default(false)
+  occurredAt           DateTime?            @db.Timestamp(3)
+  dateUnknown          Boolean              @default(false)
   description          String?
-  deletedAt            DateTime? @db.Timestamp(3)
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sourceAccount        Account   @relation("TransferSource", fields: [sourceAccountId], references: [id], onDelete: Restrict)
-  destinationAccount   Account   @relation("TransferDestination", fields: [destinationAccountId], references: [id], onDelete: Restrict)
+  deletedAt            DateTime?            @db.Timestamp(3)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceAccount        Account              @relation("TransferSource", fields: [sourceAccountId], references: [id], onDelete: Restrict)
+  destinationAccount   Account              @relation("TransferDestination", fields: [destinationAccountId], references: [id], onDelete: Restrict)
+  savingsContribution  SavingsContribution?
 
   @@index([userId, deletedAt])
   @@index([userId, occurredAt])
   @@index([userId, sourceAccountId])
   @@index([userId, destinationAccountId])
   @@map("account_transfers")
+}
+
+/// Plan d'ÉPARGNE MENSUEL (étape 10).
+///
+/// ⚠ RÈGLE ABSOLUE : UN PLAN D'ÉPARGNE N'EST JAMAIS DE L'ARGENT.
+///  - il ne modifie AUCUN solde, AUCUN Total disponible, AUCUNE Transaction,
+///    AUCUN budget, AUCUN forecast ;
+///  - le compte Épargne n'augmente QUE lorsqu'un vrai AccountTransfer vers
+///    SAVINGS est enregistré (via une SavingsContribution ou la page
+///    transferts) ;
+///  - la cible PERCENTAGE est TOUJOURS DÉRIVÉE en lecture des revenus
+///    réellement reçus du mois (Transactions INCOME actives) — jamais stockée.
+///
+/// Un utilisateur a au plus UN plan ACTIF par mois (clé calendaire « YYYY-MM »).
+/// La garantie est au niveau BASE par un index UNIQUE PARTIEL (userId, month)
+/// WHERE deletedAt IS NULL (créé dans la migration).
+///
+/// Modes (mutuellement exclusifs, CHECK en base) :
+///  - FIXED      : fixedAmount > 0, percentage NULL ;
+///  - PERCENTAGE : fixedAmount NULL, percentage > 0 et <= 100.
+model MonthlySavingsPlan {
+  id            String                @id @default(uuid()) @db.Uuid
+  userId        String                @db.Uuid
+  // Mois calendaire « YYYY-MM » (jamais un instant UTC).
+  month         String                @db.VarChar(7)
+  mode          SavingsPlanMode
+  // Cible FIXE (mode FIXED), en chaîne décimale exacte à la frontière.
+  fixedAmount   Decimal?              @db.Decimal(20, 2)
+  // Pourcentage des revenus réels du mois (mode PERCENTAGE).
+  percentage    Decimal?              @db.Decimal(20, 2)
+  currency      Currency              @default(MGA)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  // Suppression LOGIQUE : le plan disparaît de l'UI mais les contributions
+  // (AccountTransfer réels) restent intactes — l'argent a réellement bougé.
+  deletedAt     DateTime?             @db.Timestamp(3)
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contributions SavingsContribution[]
+
+  @@index([userId, month])
+  @@map("monthly_savings_plans")
+}
+
+/// Contribution RÉELLE d'un plan d'épargne (étape 10).
+///
+/// Une contribution est UNIQUEMENT le lien d'un AccountTransfer réel vers le
+/// compte SAVINGS avec un plan. Le Transfer reste la SOURCE DE VÉRITÉ du
+/// mouvement (montant, frais, source, date) : cette table ne duplique aucune
+/// valeur monétaire. Le montant CONTRIBUÉ = `AccountTransfer.amount` (jamais
+/// les frais) des transferts liés encore ACTIFS (deletedAt NULL).
+///
+/// `transferId` est UNIQUE : un même Transfer ne peut être attribué qu'à un
+/// seul plan.
+model SavingsContribution {
+  id            String             @id @default(uuid()) @db.Uuid
+  savingsPlanId String             @db.Uuid
+  transferId    String             @unique @db.Uuid
+  createdAt     DateTime           @default(now())
+  savingsPlan   MonthlySavingsPlan @relation(fields: [savingsPlanId], references: [id], onDelete: Cascade)
+  transfer      AccountTransfer    @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
+  @@index([savingsPlanId])
+  @@map("savings_contributions")
 }

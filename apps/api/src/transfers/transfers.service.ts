@@ -207,13 +207,28 @@ export async function updateTransfer(
 ): Promise<TransferPublic> {
   const existing = await prisma.accountTransfer.findFirst({
     where: { id: transferId, userId },
-    select: { id: true, deletedAt: true },
+    select: { id: true, deletedAt: true, destinationAccountId: true },
   });
   if (!existing) {
     throw new ApiError(404, 'Transfer not found.');
   }
   if (existing.deletedAt) {
     throw new ApiError(409, 'A deleted transfer cannot be modified.');
+  }
+
+  // Un Transfer lié à une contribution d'épargne (étape 10) a sa destination
+  // VERROUILLÉE sur le compte SAVINGS : on peut corriger montant/frais/source/
+  // date, mais pas le réorienter vers un autre compte (le lien du plan et la
+  // sémantique « contribution réelle » resteraient incohérents).
+  const linked = await prisma.savingsContribution.findFirst({
+    where: { transferId },
+    select: { transferId: true },
+  });
+  if (linked && input.destinationAccountId !== existing.destinationAccountId) {
+    throw new ApiError(
+      409,
+      'This transfer is a savings contribution: its destination cannot be changed.',
+    );
   }
 
   const currency = await validateTransfer(userId, input);

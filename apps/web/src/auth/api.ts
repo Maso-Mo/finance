@@ -30,6 +30,12 @@ import type {
   RecurringExpenseUpdate,
   RecurringExpensesResponse,
   RemindersResponse,
+  SavingsContributionCreate,
+  SavingsContributionMutationResponse,
+  SavingsMonthView,
+  SavingsPlanCreate,
+  SavingsPlanMutationResponse,
+  SavingsPlanUpdate,
   TransactionMutationResponse,
   TransactionsResponse,
   TransactionUpsert,
@@ -497,6 +503,59 @@ export async function apiUpdateTransfer(
 /** Supprime logiquement un transfert (deletedAt) : les soldes reviennent. */
 export async function apiDeleteTransfer(transferId: string): Promise<void> {
   await request<void>(`/transfers/${transferId}`, { method: 'DELETE' });
+}
+
+// --- Plans d'épargne mensuels + contributions (étape 10) ---
+
+/**
+ * Vue analytique read-only d'un mois : plan ACTIF éventuel + cible et
+ * contribution DÉRIVÉES + solde réel du compte Épargne. Le GET est
+ * strictement sans effet de bord (aucun transfert créé).
+ */
+export async function apiGetSavingsMonth(
+  month: string,
+): Promise<SavingsMonthView> {
+  return request<SavingsMonthView>(`/savings-plans?month=${month}`);
+}
+
+/** Crée un plan d'épargne ACTIF (FIXED ou PERCENTAGE). Jamais de l'argent. */
+export async function apiCreateSavingsPlan(
+  input: SavingsPlanCreate,
+): Promise<SavingsPlanMutationResponse> {
+  return request<SavingsPlanMutationResponse>('/savings-plans', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+/** Modifie un plan ACTIF (mode + cible). Les Transfers réels sont intouchés. */
+export async function apiUpdateSavingsPlan(
+  planId: string,
+  input: SavingsPlanUpdate,
+): Promise<SavingsPlanMutationResponse> {
+  return request<SavingsPlanMutationResponse>(`/savings-plans/${planId}`, {
+    method: 'PATCH',
+    body: input,
+  });
+}
+
+/** Supprime logiquement un plan : ses Transfers réels restent (argent épargné). */
+export async function apiDeleteSavingsPlan(planId: string): Promise<void> {
+  await request<void>(`/savings-plans/${planId}`, { method: 'DELETE' });
+}
+
+/**
+ * Enregistre une contribution RÉELLE : crée l'AccountTransfer vers SAVINGS et
+ * le lie au plan (atomique côté backend). Aucune Transaction EXPENSE/INCOME.
+ */
+export async function apiAddSavingsContribution(
+  planId: string,
+  input: SavingsContributionCreate,
+): Promise<SavingsContributionMutationResponse> {
+  return request<SavingsContributionMutationResponse>(
+    `/savings-plans/${planId}/contributions`,
+    { method: 'POST', body: input },
+  );
 }
 
 export type {

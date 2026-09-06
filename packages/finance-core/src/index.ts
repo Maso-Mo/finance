@@ -10,6 +10,7 @@
 export * from './money.js';
 export * from './ledger.js';
 export * from './transfer.js';
+export * from './savings.js';
 export * from './calendar.js';
 export * from './expected-income.js';
 export * from './budget.js';

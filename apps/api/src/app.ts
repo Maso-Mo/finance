@@ -23,6 +23,7 @@ import { incomeRemindersRouter } from './expected-incomes/income-reminders.route
 import { budgetsRouter } from './budgets/budgets.routes.js';
 import { transfersRouter } from './transfers/transfers.routes.js';
 import { forecastRouter } from './forecast/forecast.routes.js';
+import { savingsPlansRouter } from './savings/savings.routes.js';
 
 /**
  * Construction de l'application Express (sans démarrage réseau).
@@ -111,6 +112,11 @@ app.use('/forecast', requireAuth, forecastRouter);
 // strictement read-only ; POST/PATCH/DELETE ne créent/modifient/suppriment
 // AUCUNE Transaction EXPENSE/INCOME.
 app.use('/transfers', requireAuth, transfersRouter);
+
+// Plans d'épargne mensuels (étape 10) : limites/objectifs analytiques — jamais
+// de l'argent. Seule une contribution (AccountTransfer RÉEL vers SAVINGS)
+// modifie le solde Épargne. GET strictement read-only.
+app.use('/savings-plans', requireAuth, savingsPlansRouter);
 
 // Préférence de devise principale de l'utilisateur (protégée).
 app.patch('/me/preferences', requireAuth, async (req, res) => {
