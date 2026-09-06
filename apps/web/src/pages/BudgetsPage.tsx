@@ -13,6 +13,7 @@ import {
   apiDeleteBudget,
   apiGetBudgets,
   apiGetCategories,
+  apiGetForecast,
   apiUpdateBudget,
 } from '../auth/api';
 import { ThemeToggle } from '../components/ThemeToggle';
@@ -25,7 +26,9 @@ import { formatMoney, toISODate } from '../lib/format';
  *  - il ne crée ni ne modifie aucune Transaction, aucun compte ni solde ;
  *  - « Dépensé » est TOUJOURS dérivé du journal réel des Transactions ;
  *  - statut binaire affiché EN TEXTE : Vert / Dépassé (lisible sans couleur) ;
- *  - prévision = estimation simple de fin de mois, jamais une certitude.
+ *  - PRÉVISION DE DÉPENSES (spendingForecast) = estimation simple de fin de
+ *    mois, jamais une certitude — à distinguer de la PRÉVISION FINANCIÈRE de
+ *    fin de mois (mois courant), calculée à partir du disponible aujourd'hui.
  * Mobile : blocs verticaux, aucun tableau à défilement horizontal.
  */
 
@@ -131,6 +134,28 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * Formatage EXPLICITE du signe d'une SORTIE prévue : « −X Ar » (jamais de
+ * « −0 »). Le montant est toujours positif en entrée (magnitude exacte).
+ */
+function minusMoney(value: string, currency: Currency): string {
+  if (value === '0') {
+    return formatMoney('0', currency);
+  }
+  return `-${formatMoney(value, currency)}`;
+}
+
+/**
+ * Formatage EXPLICITE du signe d'une ENTRÉE prévue : « +X Ar » (jamais de
+ * « +0 »). Montant positif en entrée (magnitude exacte).
+ */
+function plusMoney(value: string, currency: Currency): string {
+  if (value === '0') {
+    return formatMoney('0', currency);
+  }
+  return `+${formatMoney(value, currency)}`;
+}
+
 export default function BudgetsPage() {
   const { status, user, signOut } = useAuth();
   const queryClient = useQueryClient();
@@ -138,6 +163,9 @@ export default function BudgetsPage() {
   const [monthKey, setMonthKey] = useState(() =>
     monthKeyOf(toISODate(new Date())),
   );
+  // « Mois courant » = le mois contenant `today` : la prévision financière
+  // de fin de mois n'existe que pour ce mois (aucune simulation d'autre mois).
+  const isCurrentMonth = monthKey === monthKeyOf(today);
   const [globalFormOpen, setGlobalFormOpen] = useState(false);
   const [categoryFormOpen, setCategoryFormOpen] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(
@@ -160,6 +188,13 @@ export default function BudgetsPage() {
     queryKey: ['budgets', monthKey],
     queryFn: () => apiGetBudgets(monthKey, today),
     enabled: status === 'authenticated',
+  });
+  // Prévision FINANCIÈRE de fin de mois (correctif 8.1) : mois COURANT
+  // uniquement (le mois contenant `today`). Read-only, tout est dérivé.
+  const forecastQuery = useQuery({
+    queryKey: ['financial-forecast', today],
+    queryFn: () => apiGetForecast(today),
+    enabled: status === 'authenticated' && isCurrentMonth,
   });
 
   const refresh = () => {
@@ -212,6 +247,7 @@ export default function BudgetsPage() {
   }
 
   const data = budgetsQuery.data;
+  const forecast = forecastQuery.data;
   const currency: Currency = data?.currency ?? 'MGA';
   const categories: CategoryPublic[] = categoriesQuery.data?.categories ?? [];
   const budgetedCategoryIds = new Set(
@@ -316,7 +352,73 @@ export default function BudgetsPage() {
         </div>
 
         <div className="mt-6 space-y-4">
-          {/* Synthèse du mois : dépensé réel + prévision (déterministes). */}
+          {/* Prévision FINANCIÈRE du mois courant (mois de `today` uniquement) :
+              disponible actuel − dépenses prévues restantes + revenus confirmés. */}
+          {isCurrentMonth && (
+            <section
+              className={card}
+              aria-label="Prévision financière de fin de mois"
+            >
+              <h2 className="text-base font-semibold">
+                Prévision financière de fin de mois
+              </h2>
+              <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                {monthLabel(monthKey)} — disponible aujourd’hui, moins les
+                dépenses prévues restantes, plus les revenus confirmés attendus
+                d’ici la fin du mois.
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Metric
+                  label="Disponible aujourd’hui"
+                  value={
+                    forecast
+                      ? formatMoney(forecast.availableToday, currency)
+                      : '…'
+                  }
+                />
+                <Metric
+                  label="Dépenses prévues restantes"
+                  value={
+                    forecast
+                      ? minusMoney(forecast.pendingPlannedExpensesTotal, currency)
+                      : '…'
+                  }
+                />
+                <Metric
+                  label="Revenus confirmés attendus"
+                  value={
+                    forecast
+                      ? plusMoney(forecast.confirmedExpectedIncomeTotal, currency)
+                      : '…'
+                  }
+                />
+                <Metric
+                  label="Prévision fin de mois"
+                  value={
+                    forecast
+                      ? formatMoney(
+                          forecast.monthEndAvailableForecast,
+                          currency,
+                        )
+                      : '…'
+                  }
+                />
+              </div>
+              <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+                Revenus incertains :{' '}
+                {forecast
+                  ? plusMoney(forecast.uncertainIncomePotential, currency)
+                  : '…'}{' '}
+                — Non inclus dans la prévision.
+              </p>
+              <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                Épargne exclue. Cette prévision peut être négative ; elle reste
+                une estimation, jamais une certitude.
+              </p>
+            </section>
+          )}
+          {/* Synthèse du mois : dépensé réel + PRÉVISION DE DÉPENSES
+              (déterministes) — à distinguer de la prévision financière. */}
           <section className={card}>
             <p className="text-sm text-neutral-500 dark:text-neutral-400">
               Dépenses réelles du mois
@@ -324,8 +426,8 @@ export default function BudgetsPage() {
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Metric label="Dépensé" value={data ? formatMoney(data.spent, currency) : '…'} />
               <Metric
-                label="Prévision fin de mois"
-                value={data ? formatMoney(data.forecast, currency) : '…'}
+                label="Prévision de dépenses"
+                value={data ? formatMoney(data.spendingForecast, currency) : '…'}
               />
             </div>
             <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
@@ -408,8 +510,8 @@ export default function BudgetsPage() {
                       value={formatMoney(data.globalBudget.remaining, currency)}
                     />
                     <Metric
-                      label="Prévision fin de mois"
-                      value={formatMoney(data.globalBudget.forecast, currency)}
+                      label="Prévision de dépenses"
+                      value={formatMoney(data.globalBudget.spendingForecast, currency)}
                     />
                   </div>
                   <ProgressBar
@@ -521,7 +623,7 @@ export default function BudgetsPage() {
                           <Metric label="Budget" value={formatMoney(budget.amount, currency)} />
                           <Metric label="Dépensé" value={formatMoney(budget.spent, currency)} />
                           <Metric label="Restant" value={formatMoney(budget.remaining, currency)} />
-                          <Metric label="Prévision" value={formatMoney(budget.forecast, currency)} />
+                          <Metric label="Prévision de dépenses" value={formatMoney(budget.spendingForecast, currency)} />
                         </div>
                         <div className="mt-3">
                           <ProgressBar
@@ -542,7 +644,10 @@ export default function BudgetsPage() {
             Les budgets sont des limites analytiques. « Dépensé » provient du
             journal réel des Transactions (source de vérité) ; les budgets ne
             modifient jamais un compte, un solde ni le Total disponible. La
-            prévision est une estimation simple, pas une certitude.
+            « prévision de dépenses » reste une estimation statistique simple,
+            et la « prévision financière de fin de mois » (mois courant) une
+            estimation combinant le disponible, les dépenses planifiées
+            restantes et les revenus confirmés : jamais des certitudes.
           </p>
         </div>
       </div>

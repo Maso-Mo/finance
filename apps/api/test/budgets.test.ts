@@ -512,12 +512,12 @@ describe('Prévision de fin de mois (today injecté)', () => {
       (await getBudgets(tokenA, '?month=2026-09&today=2026-09-10')).body,
     );
     expect(day10.spent).toBe('300000');
-    expect(day10.forecast).toBe('900000'); // 300 000 / 10 × 30.
-    expect(day10.globalBudget?.forecast).toBe('900000');
+    expect(day10.spendingForecast).toBe('900000'); // 300 000 / 10 × 30.
+    expect(day10.globalBudget?.spendingForecast).toBe('900000');
     const day15 = overviewOf(
       (await getBudgets(tokenA, '?month=2026-09&today=2026-09-15')).body,
     );
-    expect(day15.forecast).toBe('600000'); // 300 000 / 15 × 30.
+    expect(day15.spendingForecast).toBe('600000'); // 300 000 / 15 × 30.
   });
 
   it('mois PASSÉ : la prévision vaut le total réel final', async () => {
@@ -530,7 +530,7 @@ describe('Prévision de fin de mois (today injecté)', () => {
       (await getBudgets(tokenA, '?month=2026-08&today=2026-09-10')).body,
     );
     expect(past.spent).toBe('120000');
-    expect(past.forecast).toBe('120000');
+    expect(past.spendingForecast).toBe('120000');
   });
 
   it('mois FUTUR : aucune dépense inventée (prévision 0)', async () => {
@@ -543,7 +543,7 @@ describe('Prévision de fin de mois (today injecté)', () => {
       (await getBudgets(tokenA, '?month=2026-11&today=2026-09-10')).body,
     );
     expect(future.spent).toBe('0');
-    expect(future.forecast).toBe('0');
+    expect(future.spendingForecast).toBe('0');
   });
 
   it('today invalide → 400 (read-only, aucune donnée modifiée)', async () => {

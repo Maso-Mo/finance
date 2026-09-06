@@ -6,7 +6,7 @@ import {
   budgetRemaining,
   budgetStatus,
   keyToMonth,
-  monthEndForecast,
+  spendingForecast,
   monthToKey,
   monthlySpent,
   spentByCategory,
@@ -133,7 +133,11 @@ export async function getMonthlyBudgets(
 
   const entries = await monthExpenseRows(userId, monthKey);
   const spentTotal = monthlySpent(entries);
-  const forecastTotal = monthEndForecast(monthKey, referenceToday, spentTotal);
+  const spendingForecastTotal = spendingForecast(
+    monthKey,
+    referenceToday,
+    spentTotal,
+  );
 
   let globalBudget: GlobalBudgetLine | null = null;
   const categoryBudgets: CategoryBudgetLine[] = [];
@@ -147,7 +151,7 @@ export async function getMonthlyBudgets(
         currency,
         remaining: budgetRemaining(row.amount, spentTotal).toString(),
         status: budgetStatus(spentTotal, row.amount),
-        forecast: forecastTotal.toString(),
+        spendingForecast: spendingForecastTotal.toString(),
       };
       continue;
     }
@@ -161,7 +165,7 @@ export async function getMonthlyBudgets(
       spent: spentCategory.toString(),
       remaining: budgetRemaining(row.amount, spentCategory).toString(),
       status: budgetStatus(spentCategory, row.amount),
-      forecast: monthEndForecast(monthKey, referenceToday, spentCategory).toString(),
+      spendingForecast: spendingForecast(monthKey, referenceToday, spentCategory).toString(),
     });
   }
 
@@ -170,7 +174,7 @@ export async function getMonthlyBudgets(
     today: referenceToday,
     currency: user.currency as Currency,
     spent: spentTotal.toString(),
-    forecast: forecastTotal.toString(),
+    spendingForecast: spendingForecastTotal.toString(),
     globalBudget,
     categoryBudgets,
   };

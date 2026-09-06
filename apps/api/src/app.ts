@@ -21,6 +21,7 @@ import { remindersRouter } from './reminders/reminders.routes.js';
 import { expectedIncomesRouter } from './expected-incomes/expected-incomes.routes.js';
 import { incomeRemindersRouter } from './expected-incomes/income-reminders.routes.js';
 import { budgetsRouter } from './budgets/budgets.routes.js';
+import { forecastRouter } from './forecast/forecast.routes.js';
 
 /**
  * Construction de l'application Express (sans démarrage réseau).
@@ -98,6 +99,11 @@ app.use('/income-reminders', requireAuth, incomeRemindersRouter);
 
 // Budgets mensuels (étape 8) : limites analytiques — aucun impact ledger.
 app.use('/budgets', requireAuth, budgetsRouter);
+
+// Prévision FINANCIÈRE de fin de mois (correctif 8.1) : mois courant, GET
+// strictement read-only — comptes + PlannedExpense + ExpectedIncome, jamais
+// une écriture. À distinguer du spendingForecast de /budgets (dépenses).
+app.use('/forecast', requireAuth, forecastRouter);
 
 // Préférence de devise principale de l'utilisateur (protégée).
 app.patch('/me/preferences', requireAuth, async (req, res) => {

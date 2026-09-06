@@ -82,8 +82,9 @@ export const globalBudgetLineSchema = z.object({
   // Restant = budget − dépensé réel du mois (négatif si dépassé).
   remaining: z.string(),
   status: budgetStatusSchema,
-  // Prévision de fin de mois pour le TOTAL du mois (même règle que la réponse).
-  forecast: z.string(),
+  // Prévision de DÉPENSES de fin de mois (projection des dépenses réelles) —
+  // à ne PAS confondre avec la prévision de solde disponible (financière).
+  spendingForecast: z.string(),
 });
 export type GlobalBudgetLine = z.infer<typeof globalBudgetLineSchema>;
 
@@ -98,8 +99,8 @@ export const categoryBudgetLineSchema = z.object({
   spent: z.string(),
   remaining: z.string(),
   status: budgetStatusSchema,
-  // Prévision de fin de mois pour cette catégorie.
-  forecast: z.string(),
+  // Prévision de DÉPENSES de fin de mois pour cette catégorie.
+  spendingForecast: z.string(),
 });
 export type CategoryBudgetLine = z.infer<typeof categoryBudgetLineSchema>;
 
@@ -111,8 +112,10 @@ export const monthlyBudgetsResponseSchema = z.object({
   currency: currencySchema,
   // Dépenses réelles (EXPENSE actives) du mois — indépendant des budgets.
   spent: z.string(),
-  // Prévision de fin de mois basée sur les dépenses réelles du mois.
-  forecast: z.string(),
+  // PRÉVISION DE DÉPENSES du mois (projection des dépenses réelles). Ce n'est
+  // PAS une prévision de solde disponible : la prévision FINANCIÈRE de fin de
+  // mois vit dans le contrat `/forecast` (mois courant uniquement).
+  spendingForecast: z.string(),
   // Budget global du mois, ou null s'il n'est pas défini.
   globalBudget: globalBudgetLineSchema.nullable(),
   // Budgets par catégorie du mois (0 si aucun).

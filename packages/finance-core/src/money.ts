@@ -12,6 +12,13 @@ import Decimal from 'decimal.js';
 export type Money = Decimal;
 export type MoneyInput = string | number | Decimal;
 
+// Précision interne élevée : un montant peut atteindre Decimal(20, 2) — 20
+// chiffres entiers + 2 décimales. La précision par défaut de decimal.js (20
+// chiffres significatifs) arrondirait déjà les SOMMES de tels montants. On
+// lève la limite une fois pour toute la bibliothèque afin que chaque addition/
+// soustraction reste EXACTE (jamais d'arrondi silencieux sur l'argent).
+Decimal.set({ precision: 80 });
+
 /** Convertit une entrée en Decimal exact, en rejetant NaN/Infinity. */
 export function toMoney(input: MoneyInput): Money {
   const value = input instanceof Decimal ? input : new Decimal(input);

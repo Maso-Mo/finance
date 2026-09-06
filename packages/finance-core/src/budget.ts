@@ -103,7 +103,12 @@ export function elapsedDaysInMonth(monthKey: string, today: string): number {
 }
 
 /**
- * Prévision de fin de mois — V1 simple et EXPLICABLE.
+ * PRÉVISION DE DÉPENSES du mois (« spending forecast », étape 8.1) — V1 simple
+ * et EXPLICABLE.
+ *
+ * ⚠ Ceci n'est PAS une prévision de solde disponible : c'est uniquement la
+ * projection statistique des DÉPENSES RÉELLES du mois. La prévision financière
+ * de fin de mois (solde disponible) vit dans forecast.ts.
  *
  * Formule (mois en cours) :
  *   moyenne quotidienne = dépensé réel / jours écoulés
@@ -111,14 +116,14 @@ export function elapsedDaysInMonth(monthKey: string, today: string): number {
  *
  * Arrondi à 2 décimales (RMOITIE AU PLUS PROCHE) : la prévision est une
  * ESTIMATION, jamais une certitude. Elle n'utilise que des dépenses RÉELLES :
- *  - mois PASSÉ    → la « prévision » vaut le total réel final (dépensé) ;
+ *  - mois PASSÉ    → la prévision de dépenses vaut le total réel final ;
  *  - mois FUTUR    → 0 : aucune dépense réelle n'existe, on n'invente rien ;
  *  - mois COURANT  → formule moyenne quotidienne × jours du mois.
  *
  * Cas particuliers couverts : premier jour du mois (élapsed = 1), aucune
  * dépense (0), février, années bissextiles, mois passé / futur.
  */
-export function monthEndForecast(
+export function spendingForecast(
   monthKey: string,
   today: string,
   spent: MoneyInput,

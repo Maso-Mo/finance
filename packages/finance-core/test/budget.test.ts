@@ -3,7 +3,7 @@ import {
   budgetRemaining,
   budgetStatus,
   elapsedDaysInMonth,
-  monthEndForecast,
+  spendingForecast,
   monthlySpent,
   spentByCategory,
   type BudgetExpenseByCategoryLike,
@@ -132,57 +132,57 @@ describe('budgetRemaining — restant (négatif si dépassé)', () => {
   });
 });
 
-describe('monthEndForecast — prévision de fin de mois', () => {
+describe('spendingForecast — prévision de fin de mois', () => {
   it('mois en cours : moyenne quotidienne × jours du mois', () => {
     // 300 000 dépensés sur 10 jours écoulés, septembre = 30 jours.
-    const forecast = monthEndForecast('2026-09', '2026-09-10', '300000');
+    const forecast = spendingForecast('2026-09', '2026-09-10', '300000');
     expect(forecast.toString()).toBe('900000');
   });
 
   it('premier jour du mois : 1 jour écoulé', () => {
-    const forecast = monthEndForecast('2026-09', '2026-09-01', '15000');
+    const forecast = spendingForecast('2026-09', '2026-09-01', '15000');
     expect(forecast.toString()).toBe('450000');
   });
 
   it('aucune dépense → prévision 0', () => {
-    expect(monthEndForecast('2026-09', '2026-09-10', '0').toString()).toBe('0');
+    expect(spendingForecast('2026-09', '2026-09-10', '0').toString()).toBe('0');
   });
 
   it('arrondi à 2 décimales', () => {
     // 1 / 3 jour × 31 = 10,333… → 10,33
-    expect(monthEndForecast('2026-01', '2026-01-03', '1').toString()).toBe('10.33');
+    expect(spendingForecast('2026-01', '2026-01-03', '1').toString()).toBe('10.33');
     // 2 / 3 × 31 = 20,666… → 20,67
-    expect(monthEndForecast('2026-01', '2026-01-03', '2').toString()).toBe('20.67');
+    expect(spendingForecast('2026-01', '2026-01-03', '2').toString()).toBe('20.67');
   });
 
   it('mois PASSÉ : la prévision vaut le total réel final', () => {
-    expect(monthEndForecast('2026-08', '2026-09-10', '123456').toString()).toBe('123456');
-    expect(monthEndForecast('2026-08', '2026-08-31', '50000').toString()).toBe('50000');
+    expect(spendingForecast('2026-08', '2026-09-10', '123456').toString()).toBe('123456');
+    expect(spendingForecast('2026-08', '2026-08-31', '50000').toString()).toBe('50000');
   });
 
   it('mois FUTUR : aucune dépense inventée', () => {
-    expect(monthEndForecast('2026-11', '2026-09-10', '0').toString()).toBe('0');
+    expect(spendingForecast('2026-11', '2026-09-10', '0').toString()).toBe('0');
   });
 
   it('février NON bissextile : 28 jours', () => {
-    const forecast = monthEndForecast('2026-02', '2026-02-07', '70000');
+    const forecast = spendingForecast('2026-02', '2026-02-07', '70000');
     // 70 000 / 7 × 28 = 280 000.
     expect(forecast.toString()).toBe('280000');
   });
 
   it('février BISSEXTILE : 29 jours', () => {
-    const forecast = monthEndForecast('2028-02', '2028-02-07', '70000');
+    const forecast = spendingForecast('2028-02', '2028-02-07', '70000');
     // 70 000 / 7 × 29 = 290 000.
     expect(forecast.toString()).toBe('290000');
   });
 
   it('mois à 31 jours', () => {
-    const forecast = monthEndForecast('2027-01', '2027-01-10', '100000');
+    const forecast = spendingForecast('2027-01', '2027-01-10', '100000');
     expect(forecast.toString()).toBe('310000');
   });
 
   it('today = dernier jour du mois → moyenne du mois entier', () => {
-    const forecast = monthEndForecast('2026-09', '2026-09-30', '900000');
+    const forecast = spendingForecast('2026-09', '2026-09-30', '900000');
     expect(forecast.toString()).toBe('900000');
   });
 });

@@ -11,6 +11,7 @@ import type {
   ExpectedIncomePublic,
   ExpectedIncomesResponse,
   ExpectedIncomeUpdate,
+  FinancialForecastResponse,
   IncomeRemindersResponse,
   MonthlyBudgetCreate,
   MonthlyBudgetMutationResponse,
@@ -434,6 +435,21 @@ export async function apiUpdateBudget(
 /** Supprime un budget (aucune Transaction supprimée). */
 export async function apiDeleteBudget(budgetId: string): Promise<void> {
   await request<void>(`/budgets/${budgetId}`, { method: 'DELETE' });
+}
+
+// --- Prévision financière de fin de mois (correctif 8.1) ---
+
+/**
+ * Prévision FINANCIÈRE du MOIS COURANT (mois contenant `today`), read-only.
+ * À distinguer de `apiGetBudgets().spendingForecast` (projection des dépenses) :
+ * ce bloc calcule la prévision de solde disponible en fin de mois
+ * (disponible actuel − dépenses planifiées restantes + revenus confirmés
+ * attendus). Les revenus incertains restent séparés (`uncertainIncomePotential`).
+ */
+export async function apiGetForecast(
+  today: string,
+): Promise<FinancialForecastResponse> {
+  return request<FinancialForecastResponse>(`/forecast?today=${today}`);
 }
 
 export type {

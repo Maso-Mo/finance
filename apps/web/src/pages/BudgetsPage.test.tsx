@@ -10,6 +10,7 @@ import type {
   CategoriesResponse,
   CategoryBudgetLine,
   CategoryPublic,
+  FinancialForecastResponse,
   GlobalBudgetLine,
   MonthlyBudgetsResponse,
 } from '@finance/shared-types';
@@ -18,6 +19,7 @@ import {
   apiDeleteBudget,
   apiGetBudgets,
   apiGetCategories,
+  apiGetForecast,
   apiLogin,
   apiLogout,
   apiRefresh,
@@ -34,6 +36,7 @@ vi.mock('../auth/api', () => ({
   setAccessToken: vi.fn(),
   apiGetCategories: vi.fn(),
   apiGetBudgets: vi.fn(),
+  apiGetForecast: vi.fn(),
   apiCreateBudget: vi.fn(),
   apiUpdateBudget: vi.fn(),
   apiDeleteBudget: vi.fn(),
@@ -82,9 +85,32 @@ function emptyOverview(month: string): MonthlyBudgetsResponse {
     today: '2026-09-10',
     currency: 'MGA',
     spent: '0',
-    forecast: '0',
+    spendingForecast: '0',
     globalBudget: null,
     categoryBudgets: [],
+  };
+}
+
+function emptyForecast(month: string): FinancialForecastResponse {
+  return {
+    month,
+    today: `${month}-10`,
+    currency: 'MGA',
+    availableToday: '0',
+    pendingPlannedExpensesTotal: '0',
+    confirmedExpectedIncomeTotal: '0',
+    uncertainIncomePotential: '0',
+    monthEndAvailableForecast: '0',
+  };
+}
+
+function forecastLine(
+  over: Partial<FinancialForecastResponse>,
+): FinancialForecastResponse {
+  const month = over.month ?? '2026-09';
+  return {
+    ...emptyForecast(month),
+    ...over,
   };
 }
 
@@ -96,7 +122,7 @@ function globalLine(over: Partial<GlobalBudgetLine>): GlobalBudgetLine {
     currency: 'MGA',
     remaining: '850000',
     status: 'VERT',
-    forecast: '450000',
+    spendingForecast: '450000',
     ...over,
   };
 }
@@ -111,7 +137,7 @@ function categoryLine(over: Partial<CategoryBudgetLine>): CategoryBudgetLine {
     spent: '150000',
     remaining: '50000',
     status: 'VERT',
-    forecast: '450000',
+    spendingForecast: '450000',
     ...over,
   };
 }
@@ -134,20 +160,29 @@ function renderPage() {
 }
 
 let currentOverview: (month: string) => MonthlyBudgetsResponse = emptyOverview;
+let currentForecast: (month: string) => FinancialForecastResponse = emptyForecast;
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(apiRefresh).mockResolvedValue(USER);
   vi.mocked(apiGetCategories).mockResolvedValue(CATEGORIES_RESPONSE);
   currentOverview = emptyOverview;
+  currentForecast = emptyForecast;
   vi.mocked(apiGetBudgets).mockImplementation(async (month: string) =>
     currentOverview(month),
+  );
+  vi.mocked(apiGetForecast).mockImplementation(async (today: string) =>
+    currentForecast(today.slice(0, 7)),
   );
 });
 
 async function waitForData() {
   await screen.findByRole('heading', { name: 'Budgets' });
   await waitFor(() => expect(apiGetBudgets).toHaveBeenCalled());
+}
+
+async function waitForForecast() {
+  await waitFor(() => expect(apiGetForecast).toHaveBeenCalled());
 }
 
 function firstMonth(): string {
@@ -198,7 +233,7 @@ describe('BudgetsPage — budgets mensuels', () => {
     currentOverview = () => ({
       ...emptyOverview(month),
       spent: '150000',
-      forecast: '450000',
+      spendingForecast: '450000',
       categoryBudgets: [categoryLine({ month })],
     });
     renderPage();
@@ -216,7 +251,7 @@ describe('BudgetsPage — budgets mensuels', () => {
     currentOverview = () => ({
       ...emptyOverview(month),
       spent: '230000',
-      forecast: '300000',
+      spendingForecast: '300000',
       categoryBudgets: [
         categoryLine({
           month,
@@ -238,7 +273,7 @@ describe('BudgetsPage — budgets mensuels', () => {
     currentOverview = () => ({
       ...emptyOverview(month),
       spent: '150000',
-      forecast: '450000',
+      spendingForecast: '450000',
       globalBudget: globalLine({ month }),
     });
     renderPage();
@@ -304,7 +339,7 @@ describe('BudgetsPage — budgets mensuels', () => {
     currentOverview = () => ({
       ...emptyOverview(month),
       spent: '150000',
-      forecast: '450000',
+      spendingForecast: '450000',
       globalBudget: globalLine({ month }),
     });
     renderPage();
@@ -325,7 +360,7 @@ describe('BudgetsPage — budgets mensuels', () => {
     currentOverview = () => ({
       ...emptyOverview(month),
       spent: '150000',
-      forecast: '450000',
+      spendingForecast: '450000',
       categoryBudgets: [categoryLine({ month })],
     });
     renderPage();
@@ -350,7 +385,7 @@ describe('BudgetsPage — budgets mensuels', () => {
     currentOverview = () => ({
       ...emptyOverview(month),
       spent: '150000',
-      forecast: '450000',
+      spendingForecast: '450000',
       categoryBudgets: [categoryLine({ month })],
     });
     renderPage();
@@ -373,7 +408,7 @@ describe('BudgetsPage — budgets mensuels', () => {
     currentOverview = () => ({
       ...emptyOverview(month),
       spent: '0',
-      forecast: '0',
+      spendingForecast: '0',
       globalBudget: globalLine({ month, remaining: '1000000' }),
     });
     renderPage();
@@ -411,12 +446,12 @@ describe('BudgetsPage — budgets mensuels', () => {
     currentOverview = () => ({
       ...emptyOverview(month),
       spent: '1200000',
-      forecast: '1500000',
+      spendingForecast: '1500000',
       globalBudget: globalLine({
         month,
         remaining: '-200000',
         status: 'DEPASSE',
-        forecast: '1500000',
+        spendingForecast: '1500000',
       }),
     });
     renderPage();
@@ -428,3 +463,106 @@ describe('BudgetsPage — budgets mensuels', () => {
     expect(within(block).getByText('1 500 000 Ar')).toBeTruthy();
   });
 });
+
+describe('BudgetsPage — prévision financière de fin de mois (mois courant)', () => {
+  const month = '2026-09';
+
+  it('mois courant : disponible aujourd’hui, dépenses prévues, revenus confirmés, prévision, incertains séparés', async () => {
+    currentOverview = () => emptyOverview(month);
+    currentForecast = () =>
+      forecastLine({
+        month,
+        availableToday: '500000',
+        pendingPlannedExpensesTotal: '200000',
+        confirmedExpectedIncomeTotal: '300000',
+        uncertainIncomePotential: '1000000',
+        monthEndAvailableForecast: '600000',
+      });
+    renderPage();
+    await waitForData();
+    await waitForForecast();
+
+    expect(screen.getByText('Disponible aujourd’hui')).toBeTruthy();
+    expect(screen.getByText('500 000 Ar')).toBeTruthy();
+    expect(screen.getByText('Dépenses prévues restantes')).toBeTruthy();
+    expect(screen.getByText('-200 000 Ar')).toBeTruthy();
+    expect(screen.getByText('Revenus confirmés attendus')).toBeTruthy();
+    expect(screen.getByText('+300 000 Ar')).toBeTruthy();
+    expect(screen.getByText('Prévision fin de mois')).toBeTruthy();
+    // La prévision reste 600 000 Ar : les revenus incertains (1 M) ne sont
+    // JAMAIS inclus dans le résultat principal.
+    expect(screen.getByText('600 000 Ar')).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Revenus incertains : \+1 000 000 Ar — Non inclus dans la prévision/,
+      ),
+    ).toBeTruthy();
+  });
+
+  it('prévision NÉGATIVE affichée proprement (jamais clampée à zéro)', async () => {
+    currentOverview = () => emptyOverview(month);
+    currentForecast = () =>
+      forecastLine({
+        month,
+        availableToday: '100000',
+        pendingPlannedExpensesTotal: '300000',
+        confirmedExpectedIncomeTotal: '0',
+        uncertainIncomePotential: '0',
+        monthEndAvailableForecast: '-200000',
+      });
+    renderPage();
+    await waitForData();
+    await waitForForecast();
+    expect(screen.getByText('Prévision fin de mois')).toBeTruthy();
+    expect(screen.getByText('-200 000 Ar')).toBeTruthy();
+  });
+
+  it('libellé « Prévision de dépenses » distinct de « Prévision fin de mois »', async () => {
+    currentOverview = () => ({
+      ...emptyOverview(month),
+      spent: '150000',
+      spendingForecast: '450000',
+      globalBudget: globalLine({
+        month,
+        remaining: '850000',
+        spendingForecast: '450000',
+      }),
+    });
+    currentForecast = () =>
+      forecastLine({
+        month,
+        availableToday: '500000',
+        pendingPlannedExpensesTotal: '0',
+        confirmedExpectedIncomeTotal: '0',
+        monthEndAvailableForecast: '500000',
+      });
+    renderPage();
+    await waitForData();
+    await waitForForecast();
+    expect(
+      screen.getAllByText('Prévision de dépenses').length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Prévision fin de mois')).toHaveLength(1);
+  });
+
+  it('navigation vers un AUTRE mois : la prévision financière disparaît (mois courant uniquement)', async () => {
+    const user = userEvent.setup();
+    currentOverview = () => emptyOverview(month);
+    currentForecast = () => forecastLine({ month });
+    renderPage();
+    await waitForData();
+    await waitForForecast();
+    expect(
+      screen.getByRole('heading', { name: 'Prévision financière de fin de mois' }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Mois suivant' }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('heading', {
+          name: 'Prévision financière de fin de mois',
+        }),
+      ).toBeNull(),
+    );
+  });
+});
+
