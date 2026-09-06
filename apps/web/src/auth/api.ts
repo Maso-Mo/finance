@@ -12,6 +12,9 @@ import type {
   ExpectedIncomesResponse,
   ExpectedIncomeUpdate,
   IncomeRemindersResponse,
+  MonthlyBudgetCreate,
+  MonthlyBudgetMutationResponse,
+  MonthlyBudgetsResponse,
   PlannedExpenseConfirmPaid,
   PlannedExpenseConfirmPaidResponse,
   PlannedExpenseCreate,
@@ -395,6 +398,42 @@ export async function apiGetIncomeReminders(
   today: string,
 ): Promise<IncomeRemindersResponse> {
   return request<IncomeRemindersResponse>(`/income-reminders?today=${today}`);
+}
+
+// --- Budgets mensuels (étape 8) ---
+
+/** Vue analytique read-only d'un mois : budgets + dépensé + restant + statut + prévision. */
+export async function apiGetBudgets(
+  month: string,
+  today: string,
+): Promise<MonthlyBudgetsResponse> {
+  return request<MonthlyBudgetsResponse>(`/budgets?month=${month}&today=${today}`);
+}
+
+/** Crée un budget global (sans categoryId) ou par catégorie. */
+export async function apiCreateBudget(
+  input: MonthlyBudgetCreate,
+): Promise<MonthlyBudgetMutationResponse> {
+  return request<MonthlyBudgetMutationResponse>('/budgets', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+/** Modifie la LIMITE d'un budget (jamais une Transaction). */
+export async function apiUpdateBudget(
+  budgetId: string,
+  amount: string,
+): Promise<MonthlyBudgetMutationResponse> {
+  return request<MonthlyBudgetMutationResponse>(`/budgets/${budgetId}`, {
+    method: 'PATCH',
+    body: { amount },
+  });
+}
+
+/** Supprime un budget (aucune Transaction supprimée). */
+export async function apiDeleteBudget(budgetId: string): Promise<void> {
+  await request<void>(`/budgets/${budgetId}`, { method: 'DELETE' });
 }
 
 export type {

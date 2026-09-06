@@ -123,6 +123,7 @@ model User {
   plannedExpenses    PlannedExpense[]
   recurringExpenses  RecurringExpenseRule[]
   expectedIncomes    ExpectedIncome[]
+  monthlyBudgets     MonthlyBudget[]
 
   @@map("users")
 }
@@ -161,6 +162,7 @@ model Category {
   transactions      Transaction[]
   plannedExpenses   PlannedExpense[]
   recurringExpenses RecurringExpenseRule[]
+  monthlyBudgets    MonthlyBudget[]
 
   @@index([userId])
   @@map("categories")
@@ -395,4 +397,38 @@ model ExpectedIncome {
   @@index([userId, status])
   @@index([userId, expectedDate])
   @@map("expected_incomes")
+}
+
+/// Budget mensuel (étape 8) — LIMITE / OBJECTIF analytique, JAMAIS de l'argent.
+///
+///  - `month` : mois calendaire « YYYY-MM » (texte ; jamais d'instant UTC) ;
+///  - `categoryId` NULL  → budget GLOBAL du mois ;
+///  - `categoryId` défini → budget de CETTE catégorie (catégories système) ;
+///  - `amount` strictement positif (CHECK en base, cf. migration) ;
+///  - devise de l'utilisateur au moment de la création ;
+///  - le « montant dépensé » n'est JAMAIS stocké : il est DÉRIVÉ en lecture des
+///    Transactions EXPENSE actives du mois. La source de vérité reste le
+///    journal de transactions (étape 5). Un budget ne crée ni ne modifie
+///    aucune Transaction, aucun compte, aucun solde, aucun Total disponible.
+///
+/// Unicité garantie en BASE par des index UNIQUES PARTIELS (créés dans la
+/// migration, non exprimables dans le schéma Prisma) :
+///  - 1 budget GLOBAL max par (userId, month)      → (userId, month)
+///    WHERE categoryId IS NULL ;
+///  - 1 budget par (userId, month, catégorie)      → (userId, month, categoryId)
+///    WHERE categoryId IS NOT NULL.
+model MonthlyBudget {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  month      String    @db.VarChar(7)
+  amount     Decimal   @db.Decimal(20, 2)
+  currency   Currency  @default(MGA)
+  categoryId String?   @db.Uuid
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([userId, month])
+  @@map("monthly_budgets")
 }

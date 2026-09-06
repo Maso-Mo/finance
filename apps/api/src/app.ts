@@ -20,6 +20,7 @@ import { recurringExpensesRouter } from './recurring-expenses/recurring-expenses
 import { remindersRouter } from './reminders/reminders.routes.js';
 import { expectedIncomesRouter } from './expected-incomes/expected-incomes.routes.js';
 import { incomeRemindersRouter } from './expected-incomes/income-reminders.routes.js';
+import { budgetsRouter } from './budgets/budgets.routes.js';
 
 /**
  * Construction de l'application Express (sans démarrage réseau).
@@ -94,6 +95,9 @@ app.use('/expected-incomes', requireAuth, expectedIncomesRouter);
 
 // Rappels internes « Reçu ? » (étape 7) : read-only strict, états dérivés.
 app.use('/income-reminders', requireAuth, incomeRemindersRouter);
+
+// Budgets mensuels (étape 8) : limites analytiques — aucun impact ledger.
+app.use('/budgets', requireAuth, budgetsRouter);
 
 // Préférence de devise principale de l'utilisateur (protégée).
 app.patch('/me/preferences', requireAuth, async (req, res) => {
