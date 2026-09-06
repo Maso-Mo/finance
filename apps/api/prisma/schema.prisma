@@ -163,13 +163,26 @@ enum PushDeliveryStatus {
   FAILED
 }
 
+/// Statut d'une proposition d'action de l'assistant IA (étape 13).
+///
+/// La proposition n'est PAS une source de vérité financière : elle ne devient
+/// une vraie écriture qu'après confirmation explicite et réexécution
+/// déterministe par les services métier existants.
+enum AssistantProposalStatus {
+  PENDING
+  EXECUTED
+  CANCELED
+  EXPIRED
+  FAILED
+}
+
 model User {
-  id                     String                  @id @default(uuid()) @db.Uuid
-  email                  String                  @unique
+  id                     String                    @id @default(uuid()) @db.Uuid
+  email                  String                    @unique
   passwordHash           String
-  currency               Currency                @default(MGA)
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
+  currency               Currency                  @default(MGA)
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
   refreshSessions        RefreshSession[]
   accounts               Account[]
   transactions           Transaction[]
@@ -186,6 +199,8 @@ model User {
   notificationPreference NotificationPreference?
   notifications          AppNotification[]
   pushSubscriptions      PushSubscription[]
+  assistantDrafts        AssistantDraft[]
+  assistantProposals     AssistantActionProposal[]
 
   @@map("users")
 }
@@ -822,4 +837,77 @@ model PushNotificationDelivery {
   @@unique([notificationId, pushSubscriptionId])
   @@index([status, pushSubscriptionId])
   @@map("push_notification_deliveries")
+}
+
+/// Brouillon d'intention de l'assistant IA (étape 13) — contexte de
+/// CLARIFICATION uniquement, jamais une source de vérité financière.
+///
+/// Scénario : « J'ai dépensé 40 000. » → l'assistant mémorise l'intention
+/// partielle (montant) + la liste des champs réellement manquants ; le message
+/// suivant (« Restaurant, MVola, hier ») est rattaché au même brouillon afin
+/// que le backend comprenne qu'il s'agit de la même intention.
+///
+///  - `intentType` : famille d'action visée (ex. TRANSACTION_CREATE) ou
+///    UNKNOWN tant que le type n'est pas déterminé ;
+///  - `structuredPayload` : état partiel VALIDÉ (jamais un JSON libre) ;
+///  - `missingFields` : noms de champs manquants (ex. ["account","category",
+///    "date"]) — liste courte servant à construire la question regroupée.
+///
+/// Expiration : un brouillon non complété est ignoré (expiresAt).
+model AssistantDraft {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @db.Uuid
+  intentType        String   @db.VarChar(60)
+  structuredPayload Json?
+  missingFields     Json?
+  expiresAt         DateTime @db.Timestamp(3)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("assistant_drafts")
+}
+
+/// Proposition d'action de l'assistant IA (étape 13) — à CONFIRMER par
+/// l'utilisateur avant toute écriture financière.
+///
+/// ⚠ RÈGLE ABSOLUE : une proposition n'est PAS une source de vérité
+/// financière et n'exécute RIEN par elle-même. Seul `confirm` (endpoint
+/// dédié) déclenche, après revalidation déterministe, l'appel au service
+/// métier existant. Le LLM n'écrit jamais directement en base.
+///
+///  - `actionType` : l'une des actions supportées (cf. shared-types) ;
+///  - `payload` : payload final validé (Zod) au moment de la proposition ;
+///    il est RELU à la confirmation (jamais remplacé par le frontend) ;
+///  - `summary` : résumé structuré SÛR pour la carte de confirmation
+///    (label/valeurs) — le frontend ne reçoit jamais le payload brut ;
+///  - expiration (30 min) : une proposition expirée ne peut plus être
+///    exécutée (409) ;
+///  - `resultingResourceType/Id` : audit minimal d'une exécution réussie
+///    (ex. TRANSACTION / 55c1…) — jamais une seconde comptabilité ;
+///  - concurrence : la réservation PENDING→EXECUTED est atomique
+///    (updateMany conditionnel) : deux confirmations simultanées ne
+///    produisent qu'UNE seule action financière.
+model AssistantActionProposal {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  userId                String                  @db.Uuid
+  actionType            String                  @db.VarChar(60)
+  payload               Json
+  summary               Json
+  status                AssistantProposalStatus @default(PENDING)
+  expiresAt             DateTime                @db.Timestamp(3)
+  confirmedAt           DateTime?               @db.Timestamp(3)
+  executedAt            DateTime?               @db.Timestamp(3)
+  canceledAt            DateTime?               @db.Timestamp(3)
+  // Erreur métier NETTOYÉE si l'exécution confirmée a échoué (status FAILED).
+  failureReason         String?                 @db.VarChar(500)
+  resultingResourceType String?                 @db.VarChar(60)
+  resultingResourceId   String?                 @db.Uuid
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@map("assistant_action_proposals")
 }

@@ -59,6 +59,10 @@ import type {
   TransferMutationResponse,
   TransfersResponse,
   TransferUpdate,
+  AssistantStatus,
+  AssistantMessageResponse,
+  AssistantProposalPublic,
+  AssistantProposalConfirmResponse,
 } from '@finance/shared-types';
 
 /**
@@ -733,6 +737,50 @@ export async function apiDeletePushSubscription(
   await request<void>(`/push-subscriptions/${subscriptionId}`, {
     method: 'DELETE',
   });
+}
+
+// --- Assistant IA (étape 13) ----------------------------------------------
+
+export interface AssistantMessageInput {
+  message: string;
+  draftId?: string;
+  timezone?: string;
+  localDate: string;
+}
+
+/** GET /assistant/status — public (available:false si non configuré). */
+export async function apiGetAssistantStatus(): Promise<AssistantStatus> {
+  return request<AssistantStatus>('/assistant/status');
+}
+
+/** POST /assistant/message — un tour (ne crée que Draft/Proposal). */
+export async function apiSendAssistantMessage(
+  input: AssistantMessageInput,
+): Promise<AssistantMessageResponse> {
+  return request<AssistantMessageResponse>('/assistant/message', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+/** POST /assistant/proposals/:id/confirm — exécution après confirmation. */
+export async function apiConfirmAssistantProposal(
+  proposalId: string,
+): Promise<AssistantProposalConfirmResponse> {
+  return request<AssistantProposalConfirmResponse>(
+    `/assistant/proposals/${proposalId}/confirm`,
+    { method: 'POST', body: {} },
+  );
+}
+
+/** POST /assistant/proposals/:id/cancel — aucune donnée financière modifiée. */
+export async function apiCancelAssistantProposal(
+  proposalId: string,
+): Promise<{ proposal: AssistantProposalPublic }> {
+  return request<{ proposal: AssistantProposalPublic }>(
+    `/assistant/proposals/${proposalId}/cancel`,
+    { method: 'POST', body: {} },
+  );
 }
 
 export type {

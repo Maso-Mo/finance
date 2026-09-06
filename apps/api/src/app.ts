@@ -30,6 +30,8 @@ import {
   notificationPreferencesRouter,
   pushSubscriptionsRouter,
 } from './notifications/notifications.routes.js';
+import { assistantRouter } from './assistant/assistant.routes.js';
+import { assistantStatus } from './assistant/service.js';
 
 /**
  * Construction de l'application Express (sans démarrage réseau).
@@ -138,6 +140,17 @@ app.use('/debts', requireAuth, debtsRouter);
 app.use('/notifications', requireAuth, notificationsRouter);
 app.use('/notification-preferences', requireAuth, notificationPreferencesRouter);
 app.use('/push-subscriptions', requireAuth, pushSubscriptionsRouter);
+
+// Statut de l'assistant IA : PUBLIC, aucune donnée sensible ni secret. Mode
+// dégradé documenté : sans configuration AI_* → { available: false }.
+app.get('/assistant/status', async (_req, res) => {
+  res.json(await assistantStatus());
+});
+
+// Assistant IA (étape 13) : le reste des routes est protégé par auth.
+// POST /message ne crée que des Draft/Proposal ; POST confirm est la SEULE
+// voie vers une écriture financière, après confirmation explicite.
+app.use('/assistant', requireAuth, assistantRouter);
 
 // Préférence de devise principale de l'utilisateur (protégée).
 app.patch('/me/preferences', requireAuth, async (req, res) => {
