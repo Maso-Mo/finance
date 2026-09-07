@@ -162,6 +162,14 @@ export function IconClose(p: IconProps) {
   );
 }
 
+export function IconCheck(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M20 6 9 17l-5-5" />
+    </Icon>
+  );
+}
+
 
 export function IconChevronLeft(p: IconProps) {
   return (

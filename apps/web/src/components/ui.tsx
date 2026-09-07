@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 
 /** Fusionne des noms de classes. */
 export function cx(...parts: Array<string | false | null | undefined>): string {
@@ -46,11 +46,16 @@ export function Button({
 export function Panel({
   className,
   children,
+  ...rest
 }: {
   className?: string;
   children: ReactNode;
-}) {
-  return <section className={cx('card', className)}>{children}</section>;
+} & Omit<HTMLAttributes<HTMLElement>, 'className'>) {
+  return (
+    <section className={cx('card', className)} {...rest}>
+      {children}
+    </section>
+  );
 }
 
 /** Panneau avec titre + sous-titre + zone d'actions optionnelle. */

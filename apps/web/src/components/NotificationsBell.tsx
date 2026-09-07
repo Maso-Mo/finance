@@ -24,6 +24,7 @@ export function NotificationsBell() {
   return (
     <Link
       to="/notifications"
+      data-guide="bell"
       aria-label={
         unreadCount > 0
           ? `Notifications : ${unreadCount} non lues`

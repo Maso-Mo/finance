@@ -8,26 +8,33 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* =====================================================================
- * DESIGN TOKENS — Finance (redesign quotidien)
- * Le thème clair n'est pas une page blanche : fond « off-white » légèrement
- * froid, cartes blanches, même accent lime. Le thème sombre suit les
- * références : fond presque noir, surfaces charbon, lime vif.
+ * DESIGN TOKENS — Finance (palette premium douce)
+ * Palette claire « sauge & ivoire » : fond sauge légèrement froid, cartes
+ * ivoire (jamais de blanc pur), encres graphite, accent lime pétillant,
+ * complément teal/pétrole pour les données. Palette sombre « pétrole &
+ * graphite » : fond graphite tirant vers le pétrole (jamais de noir pur),
+ * surfaces teintées pétrole, accent lime, teal lumineux. Chaque token
+ * conserve un contraste AA pour le texte sur son fond.
  * ===================================================================== */
 :root {
-  --canvas: #f2f4ef;
-  --surface: #ffffff;
-  --surface-2: #eceee6;
-  --surface-3: #e2e5da;
-  --ink: #16181d;
-  --ink-2: #5a616c;
-  --ink-3: #8a919c;
-  --edge: rgba(24, 27, 32, 0.08);
-  --edge-strong: rgba(24, 27, 32, 0.14);
+  --canvas: #eef1e8;
+  --surface: #fbfcf7;
+  --surface-2: #e7ebe0;
+  --surface-3: #dde3d3;
+  --ink: #16191e;
+  --ink-2: #565e6b;
+  --ink-3: #868e99;
+  --edge: rgba(24, 27, 32, 0.09);
+  --edge-strong: rgba(24, 27, 32, 0.16);
   --brand: #a9e41c;
   --brand-ink: #0d1206;
   --brand-soft: rgba(140, 190, 10, 0.14);
   --brand-strong: #557a05;
   --ring: #6f9d10;
+  --teal: #08786b;
+  --teal-strong: #0b6a5f;
+  --petrol: #0d5e72;
+  --petrol-strong: #0a5466;
   --violet: #7c6ce0;
   --coral: #ef6a47;
   --lemon: #c7a400;
@@ -54,20 +61,24 @@
 }
 
 html.dark {
-  --canvas: #0b0d10;
-  --surface: #14171c;
-  --surface-2: #1b1f26;
-  --surface-3: #242933;
-  --ink: #f1f3f6;
-  --ink-2: #9aa2ad;
-  --ink-3: #69717c;
-  --edge: rgba(241, 243, 246, 0.07);
-  --edge-strong: rgba(241, 243, 246, 0.14);
+  --canvas: #0a0f13;
+  --surface: #121a1f;
+  --surface-2: #182229;
+  --surface-3: #222f37;
+  --ink: #eef2f4;
+  --ink-2: #9aa7ae;
+  --ink-3: #6d7b82;
+  --edge: rgba(240, 245, 247, 0.08);
+  --edge-strong: rgba(240, 245, 247, 0.15);
   --brand: #b8ff3d;
   --brand-ink: #12180a;
   --brand-soft: rgba(184, 255, 61, 0.14);
   --brand-strong: #c9ff66;
   --ring: #b8ff3d;
+  --teal: #34d3bb;
+  --teal-strong: #7ae6d4;
+  --petrol: #59b9c9;
+  --petrol-strong: #84d0db;
   --violet: #b9aaff;
   --coral: #ff8e70;
   --lemon: #ffe06a;
@@ -112,6 +123,10 @@ html.dark {
   --color-lemon: var(--lemon);
   --color-positive: var(--positive);
   --color-danger: var(--danger);
+  --color-teal: var(--teal);
+  --color-teal-strong: var(--teal-strong);
+  --color-petrol: var(--petrol);
+  --color-petrol-strong: var(--petrol-strong);
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica,
     Arial, sans-serif;

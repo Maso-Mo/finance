@@ -1,6 +1,7 @@
 import { Suspense, useState, type ComponentType } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { useOnboarding } from '../onboarding';
 import { NotificationsBell } from './NotificationsBell';
 import { ThemeToggle } from './ThemeToggle';
 import { Dialog } from './overlay';
@@ -11,6 +12,7 @@ import {
   IconCalendarClock,
   IconGauge,
   IconHome,
+  IconInfo,
   IconList,
   IconLogout,
   IconPlus,
@@ -113,6 +115,7 @@ function DesktopNavLink({ to, label, icon: Icon, end }: NavEntry & { end?: boole
 
 function DesktopSidebar() {
   const { user, signOut } = useAuth();
+  const { start } = useOnboarding();
   return (
     <aside
       className="fixed inset-y-0 left-0 z-40 hidden w-[264px] flex-col border-r bg-canvas px-3 pb-4 pt-5 lg:flex"
@@ -123,7 +126,7 @@ function DesktopSidebar() {
         <Brand />
       </div>
 
-      <nav className="mt-3 flex-1 overflow-y-auto pb-2">
+      <nav data-guide="nav" className="mt-3 flex-1 overflow-y-auto pb-2">
         <GroupLabel>Pilotage</GroupLabel>
         <ul className="space-y-0.5">
           {GROUP_1.map((entry) => (
@@ -162,11 +165,28 @@ function DesktopSidebar() {
 
         <GroupLabel>Produit</GroupLabel>
         <ul className="space-y-0.5">
-          <li>
+          <li data-guide="assistant">
             <DesktopNavLink to="/assistant" label="Assistant" icon={IconSparkles} />
           </li>
-          <li>
+          <li data-guide="bell">
             <DesktopNavLink to="/notifications" label="Notifications" icon={IconBell} />
+          </li>
+          <li>
+            <button
+              type="button"
+              onClick={start}
+              data-testid="relaunch-guide"
+              aria-label="Relancer la prise en main guidée"
+              className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-ink2 transition-colors hover:bg-raise hover:text-ink"
+            >
+              <IconInfo size={18} className="shrink-0 text-ink3 group-hover:text-brand-strong" />
+              <span className="flex-1">Prise en main</span>
+              <span
+                className="h-1.5 w-1.5 shrink-0 rounded-full"
+                style={{ background: 'var(--brand)' }}
+                aria-hidden="true"
+              />
+            </button>
           </li>
         </ul>
       </nav>
@@ -247,12 +267,14 @@ function MobileTabItem({ to, label, icon: Icon, end }: NavEntry & { end?: boolea
 /** Barre de navigation fixe en bas (mobile < 1024 px) : 5 entrées maximum. */
 function MobileBottomNav() {
   const { signOut } = useAuth();
+  const { start } = useOnboarding();
   const [plusOpen, setPlusOpen] = useState(false);
   const anyPlusActive = PLUS_ENTRIES.some((entry) => useIsActive(entry.to));
 
   return (
     <>
       <nav
+        data-guide="nav"
         className="fixed inset-x-0 bottom-0 z-40 border-t bg-canvas/95 px-1 pb-[max(env(safe-area-inset-bottom),6px)] pt-1 backdrop-blur lg:hidden"
         style={{ borderColor: 'var(--edge)' }}
         aria-label="Navigation mobile"
@@ -267,6 +289,7 @@ function MobileBottomNav() {
             onClick={() => setPlusOpen(true)}
             aria-expanded={plusOpen}
             aria-haspopup="dialog"
+            data-guide="plus"
             className={cx(
               'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10.5px] font-medium',
               anyPlusActive ? 'text-ink' : 'text-ink3',
@@ -320,6 +343,28 @@ function MobileBottomNav() {
             </li>
           ))}
         </ul>
+        <div className="mt-1 border-t pt-3" style={{ borderColor: 'var(--edge)' }}>
+          <button
+            type="button"
+            onClick={() => {
+              setPlusOpen(false);
+              start();
+            }}
+            className="group flex w-full items-center gap-3 py-2 text-left text-[15px] font-medium text-ink2 transition-colors hover:text-ink"
+          >
+            <span
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl"
+              style={{ background: 'var(--brand-soft)' }}
+            >
+              <IconInfo size={19} className="text-brand-strong" />
+            </span>
+            <span className="flex-1">Prise en main guidée</span>
+            <IconArrowRight size={17} className="text-ink3" />
+          </button>
+          <p className="mt-1 px-1 text-[11px] text-ink3">
+            Revoir l’aide au démarrage à tout moment, sans rien réinitialiser.
+          </p>
+        </div>
       </Dialog>
     </>
   );

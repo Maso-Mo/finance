@@ -21,4 +21,6 @@ export * from './forecast.js';
 export * from './debt.js';
 export * from './notifications.js';
 export * from './assistant.js';
+export * from './onboarding.js';
+export * from './analytics.js';
 

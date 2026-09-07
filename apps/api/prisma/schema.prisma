@@ -181,6 +181,10 @@ model User {
   email                  String                    @unique
   passwordHash           String
   currency               Currency                  @default(MGA)
+  // Fin du parcours de prise en main guidée (NULL = pas encore terminé). État
+  // PERSISTANT et NON-destructif : ne verrouille aucune fonctionnalité et peut
+  // être relancé manuellement à tout moment sans être réinitialisé.
+  onboardingCompletedAt  DateTime?                  @db.Timestamp(3)
   createdAt              DateTime                  @default(now())
   updatedAt              DateTime                  @updatedAt
   refreshSessions        RefreshSession[]

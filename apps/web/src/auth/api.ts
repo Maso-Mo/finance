@@ -1,5 +1,6 @@
 import type {
   AccountUpdateResponse,
+  AnalyticsOverviewResponse,
   AuthResponse,
   CategoriesResponse,
   Currency,
@@ -28,6 +29,8 @@ import type {
   NotificationPreferencePublic,
   NotificationReadResponse,
   NotificationsListResponse,
+  OnboardingCompleteResponse,
+  OnboardingGetResponse,
   PlannedExpenseConfirmPaid,
   PlannedExpenseConfirmPaidResponse,
   PlannedExpenseCreate,
@@ -781,6 +784,42 @@ export async function apiCancelAssistantProposal(
     `/assistant/proposals/${proposalId}/cancel`,
     { method: 'POST', body: {} },
   );
+}
+
+// --- Prise en main guidée (onboarding, étape 13) ---
+
+/** Statut de la prise en main (lecture seule, ne modifie aucune donnée). */
+export async function apiGetOnboarding(): Promise<OnboardingGetResponse> {
+  return request<OnboardingGetResponse>('/me/onboarding');
+}
+
+/**
+ * Termine la prise en main : le POST est idempotent et ne touche AUCUNE
+ * donnée financière (il mémorise seulement la date de fin côté serveur).
+ */
+export async function apiCompleteOnboarding(): Promise<OnboardingCompleteResponse> {
+  return request<OnboardingCompleteResponse>('/me/onboarding/complete', {
+    method: 'POST',
+  });
+}
+
+// --- Analytique lecture-seule (tableau de bord) ---
+
+/**
+ * Vue d'ensemble read-only : flux mensuels revenus/dépenses (`months`
+ * points, 1–12) + dépenses du mois courant par catégorie. `today`
+ * (YYYY-MM-DD) permet de tester de façon déterministe ; sans lui, le
+ * serveur utilise la date du jour. Aucune écriture côté API.
+ */
+export async function apiGetAnalyticsOverview(
+  months = 6,
+  today?: string,
+): Promise<AnalyticsOverviewResponse> {
+  const params = new URLSearchParams({ months: String(months) });
+  if (today) {
+    params.set('today', today);
+  }
+  return request<AnalyticsOverviewResponse>(`/analytics/overview?${params.toString()}`);
 }
 
 export type {

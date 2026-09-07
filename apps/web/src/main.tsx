@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from './theme';
 import { AuthProvider } from './auth/AuthContext';
+import { OnboardingProvider, OnboardingTour } from './onboarding';
 import App from './App';
 import './index.css';
 
@@ -21,7 +22,10 @@ createRoot(rootElement).render(
       <BrowserRouter>
         <ThemeProvider>
           <AuthProvider>
-            <App />
+            <OnboardingProvider>
+              <App />
+              <OnboardingTour />
+            </OnboardingProvider>
           </AuthProvider>
         </ThemeProvider>
       </BrowserRouter>

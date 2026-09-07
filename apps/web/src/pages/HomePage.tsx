@@ -21,6 +21,7 @@ import {
 import { BadgeDepasse, BadgeVert, Button, cx, Metric, Panel, ProgressBar } from '../components/ui';
 import { IconArrowDown, IconArrowRight, IconArrowUp, IconTarget, IconWallet } from '../components/icons';
 import { ACCOUNT_TYPE_LABELS, formatMoney, toISODate } from '../lib/format';
+import { AnalyticsSection } from '../components/analytics';
 
 const MONTH_FR = [
   'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
@@ -174,7 +175,7 @@ export default function HomePage() {
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
-          <Link to="/transactions" className="btn btn-primary gap-1.5">
+          <Link to="/transactions" id="guide-add" className="btn btn-primary gap-1.5">
             <IconArrowRight size={16} /> Ajouter
           </Link>
         </div>
@@ -182,6 +183,7 @@ export default function HomePage() {
 
       {/* ===== Héros : Total disponible ===== */}
       <section
+        id="guide-total"
         aria-label="Total disponible"
         className="card relative overflow-hidden p-6 sm:p-8"
         style={{
@@ -278,7 +280,7 @@ export default function HomePage() {
 
       {/* ===== A. Dépenses du mois · B. Prévision fin de mois · Épargne ===== */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
-        <Panel className="p-4 sm:p-5">
+        <Panel id="guide-spent" className="p-4 sm:p-5">
           <Metric
             label="Dépensé ce mois"
             value={
@@ -326,7 +328,7 @@ export default function HomePage() {
 
       {/* ===== C. Budget global ===== */}
       {budget ? (
-        <Panel className="p-5 sm:p-6">
+        <Panel id="guide-budget" className="p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-ink">Budget global</p>
             {budget.status === 'VERT' ? <BadgeVert /> : <BadgeDepasse />}
@@ -356,7 +358,7 @@ export default function HomePage() {
           </div>
         </Panel>
       ) : (
-        <Panel className="flex flex-wrap items-center justify-between gap-3 p-5">
+        <Panel id="guide-budget" className="flex flex-wrap items-center justify-between gap-3 p-5">
           <div>
             <p className="text-sm font-semibold text-ink">Budget global</p>
             <p className="text-xs text-ink2">
@@ -370,8 +372,10 @@ export default function HomePage() {
       )}
 
 
+      <AnalyticsSection currency={currency} />
+
       {/* ===== D. À vérifier ===== */}
-      <Panel className="p-5 sm:p-6">
+      <Panel id="guide-todo" className="p-5 sm:p-6">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-base font-semibold tracking-tight text-ink">À vérifier</h2>
           {reminders && toVerify.length > 0 ? (
@@ -433,7 +437,7 @@ export default function HomePage() {
 
 
       {/* ===== E. Transactions récentes ===== */}
-      <Panel className="p-5 sm:p-6">
+      <Panel id="guide-recent" className="p-5 sm:p-6">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-base font-semibold tracking-tight text-ink">
             Transactions récentes

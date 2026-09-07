@@ -13,6 +13,8 @@ import { parseOrThrow } from './validation.js';
 import { currencyPreferenceSchema } from '@finance/shared-types';
 import { accountsRouter } from './accounts/accounts.routes.js';
 import { updateUserCurrency } from './accounts/accounts.service.js';
+import { getOnboardingStatus, completeOnboarding } from './onboarding/onboarding.service.js';
+import { analyticsRouter } from './analytics/analytics.routes.js';
 import { categoriesRouter } from './categories/categories.routes.js';
 import { transactionsRouter } from './transactions/transactions.routes.js';
 import { plannedExpensesRouter } from './planned-expenses/planned-expenses.routes.js';
@@ -115,6 +117,10 @@ app.use('/budgets', requireAuth, budgetsRouter);
 // une écriture. À distinguer du spendingForecast de /budgets (dépenses).
 app.use('/forecast', requireAuth, forecastRouter);
 
+// Analytique lecture seule du tableau de bord (graphiques) : calculs dérivés
+// du journal réel. GET strictement read-only — aucune écriture, aucun statut.
+app.use('/analytics', requireAuth, analyticsRouter);
+
 // Transferts internes RÉELS entre les comptes de l'utilisateur (étape 9) :
 // un modèle DÉDIÉ — JAMAIS une « dépense source + revenu destination ». GET
 // strictement read-only ; POST/PATCH/DELETE ne créent/modifient/suppriment
@@ -157,6 +163,15 @@ app.patch('/me/preferences', requireAuth, async (req, res) => {
   const { currency } = parseOrThrow(currencyPreferenceSchema, req.body);
   await updateUserCurrency(req.userId as string, currency);
   res.status(204).end();
+});
+
+// Prise en main guidée (onboarding) — état PERSISTANT minimal, protégé.
+// GET  strictement read-only ; POST ne touche à AUCUNE donnée financière.
+app.get('/me/onboarding', requireAuth, async (req, res) => {
+  res.json(await getOnboardingStatus(req.userId as string));
+});
+app.post('/me/onboarding/complete', requireAuth, async (req, res) => {
+  res.json(await completeOnboarding(req.userId as string));
 });
 
 // 404 JSON.
