@@ -7,7 +7,111 @@
  */
 @custom-variant dark (&:where(.dark, .dark *));
 
-@theme {
+/* =====================================================================
+ * DESIGN TOKENS — Finance (redesign quotidien)
+ * Le thème clair n'est pas une page blanche : fond « off-white » légèrement
+ * froid, cartes blanches, même accent lime. Le thème sombre suit les
+ * références : fond presque noir, surfaces charbon, lime vif.
+ * ===================================================================== */
+:root {
+  --canvas: #f2f4ef;
+  --surface: #ffffff;
+  --surface-2: #eceee6;
+  --surface-3: #e2e5da;
+  --ink: #16181d;
+  --ink-2: #5a616c;
+  --ink-3: #8a919c;
+  --edge: rgba(24, 27, 32, 0.08);
+  --edge-strong: rgba(24, 27, 32, 0.14);
+  --brand: #a9e41c;
+  --brand-ink: #0d1206;
+  --brand-soft: rgba(140, 190, 10, 0.14);
+  --brand-strong: #557a05;
+  --ring: #6f9d10;
+  --violet: #7c6ce0;
+  --coral: #ef6a47;
+  --lemon: #c7a400;
+  --positive: #118a4e;
+  --danger: #d93c2f;
+  --shadow-card:
+    0 1px 2px rgba(18, 22, 16, 0.04), 0 10px 28px -18px rgba(18, 22, 16, 0.18);
+  --shadow-pop:
+    0 2px 8px rgba(18, 22, 16, 0.08), 0 18px 48px -20px rgba(18, 22, 16, 0.28);
+
+  /* Redéfinition de l'échelle « neutral » Tailwind (clair) : le fond de page,
+     les cartes et les encres suivent le même langage que les tokens. */
+  --color-neutral-50: #f7f8f3;
+  --color-neutral-100: #f2f4ef;
+  --color-neutral-200: #e6e8df;
+  --color-neutral-300: #d6d9cd;
+  --color-neutral-400: #b6bcc3;
+  --color-neutral-500: #6b7380;
+  --color-neutral-600: #545b66;
+  --color-neutral-700: #3b424c;
+  --color-neutral-800: #2a2f37;
+  --color-neutral-900: #16181d;
+  --color-neutral-950: #0d0f13;
+}
+
+html.dark {
+  --canvas: #0b0d10;
+  --surface: #14171c;
+  --surface-2: #1b1f26;
+  --surface-3: #242933;
+  --ink: #f1f3f6;
+  --ink-2: #9aa2ad;
+  --ink-3: #69717c;
+  --edge: rgba(241, 243, 246, 0.07);
+  --edge-strong: rgba(241, 243, 246, 0.14);
+  --brand: #b8ff3d;
+  --brand-ink: #12180a;
+  --brand-soft: rgba(184, 255, 61, 0.14);
+  --brand-strong: #c9ff66;
+  --ring: #b8ff3d;
+  --violet: #b9aaff;
+  --coral: #ff8e70;
+  --lemon: #ffe06a;
+  --positive: #46d98d;
+  --danger: #ff6b5e;
+  --shadow-card:
+    0 1px 2px rgba(0, 0, 0, 0.25), 0 14px 34px -22px rgba(0, 0, 0, 0.6);
+  --shadow-pop:
+    0 2px 8px rgba(0, 0, 0, 0.3), 0 22px 54px -20px rgba(0, 0, 0, 0.75);
+
+  /* Redéfinition de l'échelle « neutral » Tailwind (sombre). */
+  --color-neutral-50: #15181d;
+  --color-neutral-100: #f1f3f6;
+  --color-neutral-200: #dbe0e6;
+  --color-neutral-300: #b9c1cb;
+  --color-neutral-400: #97a0ab;
+  --color-neutral-500: #7e8793;
+  --color-neutral-600: #69717c;
+  --color-neutral-700: #2b3039;
+  --color-neutral-800: #1c2027;
+  --color-neutral-900: #15181d;
+  --color-neutral-950: #0b0d10;
+}
+
+/* Exposition des tokens au moteur de classes Tailwind (bg-canvas, text-ink…). */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-card: var(--surface);
+  --color-raise: var(--surface-2);
+  --color-raise2: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink-2);
+  --color-ink3: var(--ink-3);
+  --color-edge: var(--edge);
+  --color-edge2: var(--edge-strong);
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-strong: var(--brand-strong);
+  --color-violet: var(--violet);
+  --color-coral: var(--coral);
+  --color-lemon: var(--lemon);
+  --color-positive: var(--positive);
+  --color-danger: var(--danger);
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica,
     Arial, sans-serif;
@@ -23,7 +127,14 @@ html.dark {
 }
 
 body {
-  @apply antialiased bg-neutral-100 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100;
+  @apply bg-canvas text-ink antialiased;
+}
+
+/* Focus clavier global, cohérent et bien visible (les deux thèmes). */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 /*
@@ -53,6 +164,157 @@ html.theme-transition *::after {
  */
 @media (prefers-reduced-motion: reduce) {
   *,
+
+/* =====================================================================
+ * COMPOSANTS DE BASE (classes utilitaires partagées par toutes les pages)
+ * ===================================================================== */
+@layer components {
+  /* Carte principale très arrondie, sans cadre agressif. */
+  .card {
+    @apply rounded-[22px] bg-card text-ink;
+    box-shadow: var(--shadow-card);
+  }
+  .card-pad {
+    @apply rounded-[22px] bg-card p-5 text-ink sm:p-6;
+    box-shadow: var(--shadow-card);
+  }
+  .card-hover {
+    transition:
+      box-shadow 160ms ease,
+      transform 160ms ease,
+      background-color 160ms ease;
+  }
+  .card-hover:hover {
+    box-shadow: var(--shadow-pop);
+  }
+
+  /* Boutons : primaire = lime. Vocabulaire produit respecté (Enregistrer,
+     Ajouter, Confirmer — jamais « Envoyer/Retirer/Payer »). */
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost,
+  .btn-danger {
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl text-sm font-semibold transition-colors duration-150;
+    padding: 10px 18px;
+    min-height: 44px;
+  }
+  .btn:disabled,
+  .btn-primary:disabled,
+  .btn-secondary:disabled,
+  .btn-ghost:disabled,
+  .btn-danger:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+  .btn-primary {
+    color: var(--brand-ink);
+    background: var(--brand);
+  }
+  .btn-primary:not(:disabled):hover {
+    filter: brightness(0.94);
+  }
+  .btn-secondary {
+    color: var(--ink);
+    background: var(--surface-2);
+  }
+  .btn-secondary:not(:disabled):hover {
+    background: var(--surface-3);
+  }
+  .btn-ghost {
+    color: var(--ink-2);
+    background: transparent;
+  }
+  .btn-ghost:not(:disabled):hover {
+    background: var(--surface-2);
+  }
+  .btn-danger {
+    color: #fff;
+    background: var(--danger);
+  }
+  .btn-danger:not(:disabled):hover {
+    filter: brightness(0.92);
+  }
+  .btn-sm {
+    padding: 8px 14px;
+    min-height: 36px;
+    border-radius: 10px;
+    font-size: 13px;
+  }
+
+  /* Champ de formulaire : généreux, sans cadre double. */
+  .field {
+    @apply w-full rounded-xl text-[15px] text-ink placeholder:text-ink3;
+    background: var(--surface-2);
+    padding: 12px 16px;
+    border: 1px solid transparent;
+  }
+  .field:focus-visible {
+    outline: none;
+    border-color: var(--brand);
+    background: var(--surface);
+    box-shadow: 0 0 0 3px var(--brand-soft);
+  }
+  select.field {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--ink-3) 50%),
+      linear-gradient(135deg, var(--ink-3) 50%, transparent 50%);
+    background-position:
+      calc(100% - 20px) 50%,
+      calc(100% - 15px) 50%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+  }
+  textarea.field {
+    resize: vertical;
+    min-height: 84px;
+  }
+
+  .label-text {
+    @apply mb-2 block text-[13px] font-medium text-ink2;
+  }
+
+  /* Puce de statut binaire Vert / Dépassé — toujours texte en plus de la couleur. */
+  .badge-vert {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold;
+    background: color-mix(in srgb, var(--positive) 16%, transparent);
+    color: var(--positive);
+  }
+  .badge-depasse {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold;
+    background: color-mix(in srgb, var(--danger) 16%, transparent);
+    color: var(--danger);
+  }
+  .badge-soft {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold text-ink2;
+    background: var(--surface-2);
+  }
+
+  .num {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* Ligne de liste (transaction, notification…). */
+  .row {
+    @apply flex w-full items-center gap-3 px-1 py-3 text-left;
+  }
+
+  /* Barre de progression douce. */
+  .track {
+    @apply h-2 w-full overflow-hidden rounded-full;
+    background: var(--surface-2);
+  }
+}
+
+/* Bouton icône seul (cloche, thème…) — gros tap target mobile. */
+.icon-btn {
+  @apply inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl text-ink2 transition-colors;
+}
+.icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
   *::before,
   *::after {
     animation-duration: 0.01ms !important;

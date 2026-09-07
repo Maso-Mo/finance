@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AccountPublic,
@@ -17,21 +17,16 @@ import {
   apiGetTransactions,
   apiUpdateTransaction,
 } from '../auth/api';
-import { ThemeToggle } from '../components/ThemeToggle';
-import { NotificationsBell } from '../components/NotificationsBell';
 import TransactionForm from '../components/TransactionForm';
-import {
-  ACCOUNT_TYPE_LABELS,
-  formatMoney,
-  formatSignedMoney,
-} from '../lib/format';
+import { Dialog } from '../components/overlay';
+import { Button, cx, IconBadge, PageHeader, Panel } from '../components/ui';
+import { IconArrowDown, IconArrowUp, IconPlus } from '../components/icons';
+import { ACCOUNT_TYPE_LABELS, formatMoney, formatSignedMoney } from '../lib/format';
 
 const PAGE_SIZE = 20;
 
 function dateHuman(value: string | null): string {
-  if (!value) {
-    return 'Date ?';
-  }
+  if (!value) return 'Date ?';
   return new Date(`${value}T00:00:00`).toLocaleDateString('fr-FR', {
     day: 'numeric',
     month: 'short',
@@ -41,9 +36,7 @@ function dateHuman(value: string | null): string {
 
 /** « MVola 400 000 Ar + Cash 200 000 Ar » ou « Compte ? ». */
 function describeAccounts(tx: TransactionPublic, currency: Currency): string {
-  if (tx.accountUnknown || tx.allocations.length === 0) {
-    return 'Compte ?';
-  }
+  if (tx.accountUnknown || tx.allocations.length === 0) return 'Compte ?';
   return tx.allocations
     .map((allocation) => {
       const label = ACCOUNT_TYPE_LABELS[allocation.accountType];
@@ -67,8 +60,9 @@ function describeMeta(tx: TransactionPublic, currency: Currency): string {
   return parts.join(' · ');
 }
 
+
 export default function TransactionsPage() {
-  const { status, user, signOut } = useAuth();
+  const { status } = useAuth();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
@@ -128,7 +122,7 @@ export default function TransactionsPage() {
 
   if (status === 'loading') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-100 text-neutral-500 dark:bg-neutral-950 dark:text-neutral-400">
+      <div className="flex min-h-[50vh] items-center justify-center text-ink2">
         Restauration de session…
       </div>
     );
@@ -141,6 +135,8 @@ export default function TransactionsPage() {
   const currency: Currency = accountsQuery.data?.currency ?? 'MGA';
   const categories = categoriesQuery.data?.categories ?? [];
   const ledger = ledgerQuery.data;
+  const loadingLedger = ledgerQuery.isLoading || !ledger;
+  const formReady = formOpen && accounts.length > 0 && categories.length > 0;
 
   function openCreate() {
     setEditing(null);
@@ -153,229 +149,243 @@ export default function TransactionsPage() {
     setFormOpen(true);
   }
 
-  const loadingLedger = ledgerQuery.isLoading || !ledger;
+  function closeForm() {
+    setFormOpen(false);
+    setEditing(null);
+  }
 
   return (
-    <main className="min-h-screen bg-neutral-100 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-      <header className="flex items-center justify-between gap-3 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            to="/"
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title="Transactions"
+        subtitle="Vos revenus et dépenses réels — l’argent qui bouge."
+        actions={
+          <Button
+            variant="primary"
+            onClick={openCreate}
+            disabled={accounts.length === 0}
           >
-            Accueil
-          </Link>
-          <h1 className="text-lg font-semibold">Transactions</h1>
-          <span className="hidden text-xs text-neutral-500 sm:inline dark:text-neutral-400">
-            {user?.email}
+            <IconPlus size={17} /> Nouvelle opération
+          </Button>
+        }
+      />
+
+      {ledger && ledger.transactions.length > 0 ? (
+        <div
+          className="flex flex-wrap items-center gap-3 rounded-2xl px-4 py-3 text-sm"
+          style={{ background: 'var(--surface-2)' }}
+        >
+          <span className="text-xs font-semibold uppercase tracking-wide text-ink2">
+            Page {page}
           </span>
+          <span className="num text-sm font-bold text-[var(--positive)]">
+            +{formatMoney(ledger.totals.incomes, currency)}
+          </span>
+          <span className="text-xs text-ink3">entrées</span>
+          <span className="num text-sm font-bold text-[var(--danger)]">
+            −{formatMoney(ledger.totals.expenses, currency)}
+          </span>
+          <span className="text-xs text-ink3">sorties</span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <NotificationsBell />
-          <ThemeToggle />
-          <button
-            type="button"
-            onClick={() => void signOut()}
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
-          >
-            Déconnexion
-          </button>
-        </div>
-      </header>
+      ) : null}
 
-      <div className="mx-auto max-w-3xl px-4 py-8">
-        {!formOpen && !editing && (
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={openCreate}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-            >
-              Nouvelle opération
-            </button>
-          </div>
+      <Panel className="p-2 sm:p-3">
+        {loadingLedger && (
+          <p className="px-4 py-6 text-center text-sm text-ink3">Chargement…</p>
         )}
-
-        {formOpen && accounts.length > 0 && categories.length > 0 && (
-          <div className="mb-6">
-            <TransactionForm
-              key={editing?.id ?? `new-${formKey}`}
-              accounts={accounts}
-              categories={categories}
-              currency={currency}
-              editing={editing}
-              isSubmitting={saveMutation.isPending}
-              submitError={
-                saveMutation.isError
-                  ? saveMutation.error instanceof Error
-                    ? saveMutation.error.message
-                    : 'Échec de l’enregistrement.'
-                  : null
-              }
-              onCancel={() => {
-                setFormOpen(false);
-                setEditing(null);
-              }}
-              onSubmit={(input) =>
-                saveMutation.mutate({
-                  transactionId: editing?.id ?? null,
-                  input,
-                })
-              }
-            />
-          </div>
-        )}
-
-        {deletePending && (
-          <section
-            role="dialog"
-            aria-modal="true"
-            className="mb-6 rounded-2xl border border-red-200 bg-white p-5 shadow-sm dark:border-red-900 dark:bg-neutral-900"
-          >
-            <h2 className="text-base font-semibold text-red-700 dark:text-red-300">
-              Supprimer cette opération ?
-            </h2>
-            <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">
-              {deletePending.description ?? 'Sans libellé'} ·{' '}
-              {formatSignedMoney(deletePending.amount, deletePending.type, currency)} ·{' '}
-              {describeAccounts(deletePending, currency)}
+        {ledger && ledger.transactions.length === 0 && (
+          <div className="px-4 py-10 text-center">
+            <p className="text-sm font-semibold text-ink">
+              Aucune opération enregistrée.
             </p>
-            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+            <p className="mt-1 text-xs text-ink2">
+              Ajoutez votre première dépense ou votre premier revenu avec
+              « Nouvelle opération ».
+            </p>
+          </div>
+        )}
+
+        {ledger && ledger.transactions.length > 0 && (
+          <ul className="divide-y" style={{ borderColor: 'var(--edge)' }}>
+            {ledger.transactions.map((tx) => {
+              const isExpense = tx.type === 'EXPENSE';
+              const Icon = isExpense ? IconArrowDown : IconArrowUp;
+              return (
+                <li
+                  key={tx.id}
+                  className="flex items-center gap-3 px-3 py-3 sm:px-4"
+                >
+                  <IconBadge
+                    className={
+                      isExpense
+                        ? 'bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]'
+                        : 'bg-[color-mix(in_srgb,var(--positive)_12%,transparent)] text-[var(--positive)]'
+                    }
+                  >
+                    <Icon size={18} />
+                  </IconBadge>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[15px] font-semibold text-ink">
+                      {tx.description ??
+                        (tx.type === 'EXPENSE' ? 'Dépense' : 'Revenu')}
+                    </p>
+                    <p className="truncate text-xs text-ink2">
+                      {describeMeta(tx, currency)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2.5 sm:gap-3">
+                    <span
+                      className={cx(
+                        'num text-sm font-bold sm:text-[15px]',
+                        isExpense
+                          ? 'text-[var(--danger)]'
+                          : 'text-[var(--positive)]',
+                      )}
+                    >
+                      {formatSignedMoney(tx.amount, tx.type, currency)}
+                    </span>
+                    <div className="flex flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-1.5">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => openEdit(tx)}
+                        className="!px-2 !text-xs"
+                      >
+                        Modifier
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => setDeletePending(tx)}
+                        className="!px-2 !text-xs text-[var(--danger)]"
+                      >
+                        Supprimer
+                      </Button>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {ledger && ledger.transactions.length > 0 && (
+          <div
+            className="mt-1 flex items-center justify-between gap-3 border-t px-3 py-3 sm:px-4"
+            style={{ borderColor: 'var(--edge)' }}
+          >
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Précédent
+            </Button>
+            <span className="text-xs text-ink2">Page {page}</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!ledger.hasMore}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Suivant
+            </Button>
+          </div>
+        )}
+      </Panel>
+
+
+      <p className="text-xs leading-relaxed text-ink3">
+        Une opération peut être ventilée sur plusieurs comptes (la somme des
+        parts doit couvrir exactement le montant). Toute écriture est confirmée
+        avant enregistrement, et la suppression est logique.
+      </p>
+
+      {/* Formulaire création / édition dans une boîte modale */}
+      <Dialog
+        open={formReady}
+        onClose={closeForm}
+        title={editing ? 'Modifier la transaction' : 'Nouvelle opération'}
+      >
+        <TransactionForm
+          key={editing?.id ?? `new-${formKey}`}
+          accounts={accounts}
+          categories={categories}
+          currency={currency}
+          editing={editing}
+          isSubmitting={saveMutation.isPending}
+          submitError={
+            saveMutation.isError
+              ? saveMutation.error instanceof Error
+                ? saveMutation.error.message
+                : 'Échec de l’enregistrement.'
+              : null
+          }
+          onCancel={closeForm}
+          onSubmit={(input) =>
+            saveMutation.mutate({
+              transactionId: editing?.id ?? null,
+              input,
+            })
+          }
+        />
+      </Dialog>
+
+      {/* Confirmation de suppression */}
+      <Dialog
+        open={Boolean(deletePending)}
+        onClose={() => setDeletePending(null)}
+        title="Supprimer cette opération ?"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDeletePending(null)}>
+              Annuler
+            </Button>
+            <Button
+              variant="danger"
+              disabled={deleteMutation.isPending}
+              onClick={() =>
+                deletePending && deleteMutation.mutate(deletePending.id)
+              }
+            >
+              {deleteMutation.isPending
+                ? 'Suppression…'
+                : 'Confirmer la suppression'}
+            </Button>
+          </>
+        }
+      >
+        {deletePending && (
+          <div className="text-sm leading-relaxed text-ink2">
+            <p className="font-semibold text-ink">
+              {deletePending.description ?? 'Sans libellé'}
+            </p>
+            <p className="mt-2">
+              {formatSignedMoney(
+                deletePending.amount,
+                deletePending.type,
+                currency,
+              )}{' '}
+              · {describeAccounts(deletePending, currency)}
+            </p>
+            <p className="mt-3 text-xs text-ink3">
               La transaction est supprimée logiquement : elle disparaît de
               l’historique et les soldes sont recalculés.
             </p>
             {deleteMutation.isError && (
-              <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+              <p className="mt-2 text-sm font-medium text-[var(--danger)]">
                 {deleteMutation.error instanceof Error
                   ? deleteMutation.error.message
                   : 'Échec de la suppression.'}
               </p>
             )}
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={deleteMutation.isPending}
-                onClick={() => deleteMutation.mutate(deletePending.id)}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-              >
-                {deleteMutation.isPending ? 'Suppression…' : 'Confirmer la suppression'}
-              </button>
-              <button
-                type="button"
-                disabled={deleteMutation.isPending}
-                onClick={() => setDeletePending(null)}
-                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
-              >
-                Annuler
-              </button>
-            </div>
-          </section>
-        )}
-
-        <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-base font-semibold">Historique</h2>
-            {ledger && (
-              <div className="flex flex-wrap gap-3 text-sm">
-                <span className="text-emerald-600 dark:text-emerald-400">
-                  Revenus : {formatMoney(ledger.totals.incomes, currency)}
-                </span>
-                <span className="text-red-600 dark:text-red-400">
-                  Dépenses : {formatMoney(ledger.totals.expenses, currency)}
-                </span>
-              </div>
-            )}
           </div>
-
-          {loadingLedger && (
-            <p className="mt-4 text-sm text-neutral-400">Chargement…</p>
-          )}
-          {ledger && ledger.transactions.length === 0 && (
-            <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">
-              Aucune opération enregistrée. Ajoutez votre première dépense ou
-              votre premier revenu.
-            </p>
-          )}
-          {ledger && ledger.transactions.length > 0 && (
-            <ul className="mt-3">
-              {ledger.transactions.map((tx) => (
-                <li
-                  key={tx.id}
-                  className="flex items-start justify-between gap-3 border-t border-neutral-200 py-3 first:border-t-0 dark:border-neutral-800"
-                >
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <span className="truncate text-sm text-neutral-800 dark:text-neutral-100">
-                      {tx.description ?? 'Sans libellé'}
-                    </span>
-                    <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                      {describeMeta(tx, currency)}
-                    </span>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <span
-                      className={`text-sm font-semibold tabular-nums ${
-                        tx.type === 'EXPENSE'
-                          ? 'text-red-600 dark:text-red-400'
-                          : 'text-emerald-600 dark:text-emerald-400'
-                      }`}
-                    >
-                      {formatSignedMoney(tx.amount, tx.type, currency)}
-                    </span>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        disabled={deleteMutation.isPending}
-                        onClick={() => openEdit(tx)}
-                        className="rounded-lg border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
-                      >
-                        Modifier
-                      </button>
-                      <button
-                        type="button"
-                        disabled={deleteMutation.isPending}
-                        onClick={() => setDeletePending(tx)}
-                        className="rounded-lg border border-neutral-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:border-neutral-700 dark:text-red-400 dark:hover:bg-red-950/40"
-                      >
-                        Supprimer
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {ledger && ledger.transactions.length > 0 && (
-            <div className="mt-4 flex items-center justify-between border-t border-neutral-200 pt-3 dark:border-neutral-800">
-              <button
-                type="button"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="rounded-lg border border-neutral-300 px-3 py-1 text-xs text-neutral-600 hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
-              >
-                Précédent
-              </button>
-              <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                Page {page}
-              </span>
-              <button
-                type="button"
-                disabled={!ledger.hasMore}
-                onClick={() => setPage((p) => p + 1)}
-                className="rounded-lg border border-neutral-300 px-3 py-1 text-xs text-neutral-600 hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
-              >
-                Suivant
-              </button>
-            </div>
-          )}
-        </section>
-
-        <p className="mt-4 text-xs text-neutral-500 dark:text-neutral-500">
-          Une opération peut être ventilée sur plusieurs comptes (la somme des
-          parts doit couvrir exactement le montant). Toute écriture est
-          confirmée avant enregistrement, et la suppression est logique.
-        </p>
-      </div>
-    </main>
+        )}
+      </Dialog>
+    </div>
   );
 }
+

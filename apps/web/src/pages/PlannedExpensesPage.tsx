@@ -22,11 +22,11 @@ import {
   buildConfirmPaidPayload, buildPlannedExpensePayload, buildRecurringExpensePayload,
 } from '../lib/planned';
 
-const inputCls = 'mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-950';
-const btn = 'rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50';
-const btnOut = 'rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800';
-const btnDanger = 'rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50';
-const card = 'rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900';
+const inputCls = 'field';
+const btn = 'btn btn-primary';
+const btnOut = 'btn btn-secondary';
+const btnDanger = 'btn btn-danger';
+const card = 'card';
 
 type FormKind = 'none' | 'one' | 'recur';
 
@@ -116,19 +116,8 @@ export default function PlannedExpensesPage() {
 
   const activeCount = pendingGroups.overdue.length + pendingGroups.due.length + pendingGroups.upcoming.length + pendingGroups.later.length;
   return (
-    <main className="min-h-screen bg-neutral-100 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-      <header className="flex items-center justify-between gap-3 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
-        <div className="flex flex-wrap items-center gap-2">
-          <Link to="/" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800">Accueil</Link>
-          <h1 className="text-lg font-semibold">Dépenses à venir</h1>
-          <span className="hidden text-xs text-neutral-500 sm:inline dark:text-neutral-400">{user?.email}</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <NotificationsBell />
-          <ThemeToggle />
-          <button type="button" onClick={() => void signOut()} className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800">Déconnexion</button>
-        </div>
-      </header>
+    <div className="flex flex-col gap-5">
+      <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-[28px]">Dépenses à venir</h1>
       <div className="mx-auto max-w-3xl px-4 py-8">
         {error && <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
         {form === 'none' && !paying && (
@@ -226,7 +215,7 @@ export default function PlannedExpensesPage() {
       {modalConfirm(cancelId, 'Annuler cette dépense ?', 'Seront annulées (CANCELED) : ' + (cancelId ? `${formatMoney(cancelId.amount, currency)} le ${dateHuman(cancelId.dueDate)}.` : ''), 'Oui, annuler', () => { if (cancelId) cancel.mutate(cancelId.id); })}
       {modalConfirm(skipId, 'Ignorer cette occurrence ?', 'Seul ce mois-ci sera ignoré (SKIPPED). Les mois suivants continueront d’exister.', 'Oui, ignorer ce mois', () => { if (skipId) skip.mutate(skipId.id); })}
       {modalConfirm(disableId, 'Désactiver cette récurrence ?', 'Aucune nouvelle échéance ne sera générée. Les paiements enregistrés restent visibles.', 'Oui, désactiver', () => { if (disableId) disable.mutate(disableId.id); })}
-    </main>
+    </div>
   );
 }
 

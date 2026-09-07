@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { ThemeToggle } from '../components/ThemeToggle';
 
 /**
- * Écran minimal d'inscription (aucun design financier).
+ * Inscription — même langage produit que la connexion.
  */
 export default function RegisterPage() {
   const { status, signUp } = useAuth();
@@ -34,42 +34,68 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-100 p-6 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-      <div className="mx-auto flex max-w-md flex-col gap-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Finance — inscription</h1>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-10">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-32 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full opacity-60"
+        style={{ background: 'radial-gradient(circle, var(--brand-soft) 0%, transparent 65%)' }}
+      />
+      <div className="relative w-full max-w-[420px]">
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span
+              className="flex h-10 w-10 items-center justify-center rounded-2xl text-lg font-black text-brand-ink"
+              style={{ background: 'var(--brand)' }}
+            >
+              F
+            </span>
+            <span className="text-xl font-bold tracking-tight text-ink">Finance</span>
+          </div>
           <ThemeToggle />
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="flex flex-col gap-4 rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+          className="card flex flex-col gap-4 p-6 sm:p-8"
         >
-          <label className="flex flex-col gap-1 text-sm">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-ink">
+              Créer votre espace
+            </h1>
+            <p className="mt-1 text-sm text-ink2">
+              Suivez vos dépenses, revenus et projets sans en faire un tableau de bord technique.
+            </p>
+          </div>
+
+          <label className="flex flex-col gap-1.5 text-sm font-medium text-ink">
             Email
             <input
               type="email"
               required
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className="field"
             />
           </label>
 
-          <label className="flex flex-col gap-1 text-sm">
+          <label className="flex flex-col gap-1.5 text-sm font-medium text-ink">
             Mot de passe (min. 8 caractères)
             <input
               type="password"
               required
               minLength={8}
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className="field"
             />
           </label>
 
           {error && (
-            <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+            <p className="rounded-xl px-3 py-2 text-sm font-medium text-[var(--danger)]" role="alert"
+              style={{ background: 'color-mix(in srgb, var(--danger) 10%, transparent)' }}
+            >
               {error}
             </p>
           )}
@@ -77,13 +103,16 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+            className="btn btn-primary w-full"
           >
-            {submitting ? 'Création…' : "S'inscrire"}
+            {submitting ? 'Création…' : 'S’inscrire'}
           </button>
 
-          <p className="text-sm text-neutral-600 dark:text-neutral-300">
-            Déjà un compte ? <Link to="/login" className="text-indigo-600 dark:text-indigo-400">Se connecter</Link>
+          <p className="mt-1 text-center text-sm text-ink2">
+            Déjà un compte ?{' '}
+            <Link to="/login" className="font-semibold text-brand-strong">
+              Se connecter
+            </Link>
           </p>
         </form>
       </div>

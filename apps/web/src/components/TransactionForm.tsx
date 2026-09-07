@@ -327,7 +327,7 @@ export default function TransactionForm({
   if (review) {
     const categoryName = categories.find((c) => c.id === review.categoryId)?.name;
     return (
-      <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+      <section className="space-y-5">
         <h2 className="text-base font-semibold">
           {editing ? 'Modifier' : 'Confirmer'} la {typeLabel(review.type)}
         </h2>
@@ -380,11 +380,7 @@ export default function TransactionForm({
             type="button"
             disabled={isSubmitting}
             onClick={() => onSubmit(review)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${
-              review.type === 'EXPENSE'
-                ? 'bg-red-600 hover:bg-red-700'
-                : 'bg-emerald-600 hover:bg-emerald-700'
-            }`}
+            className={`btn btn-primary`}
           >
             {isSubmitting ? 'Enregistrement…' : 'Confirmer et enregistrer'}
           </button>
@@ -419,21 +415,8 @@ export default function TransactionForm({
     amountCents !== null && allocatedCents === amountCents;
 
   return (
-    <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold">
-          {editing ? 'Modifier la transaction' : 'Nouvelle opération'}
-        </h2>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-lg border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
-        >
-          Annuler
-        </button>
-      </div>
-
-      <form onSubmit={handleReviewSubmit} className="mt-4 space-y-4">
+    <section className="space-y-5">
+      <form onSubmit={handleReviewSubmit} className="mt-1 space-y-4">
         {/* Sens de l’opération */}
         <div role="radiogroup" aria-label="Type d’opération" className="flex gap-2">
           <button
@@ -474,7 +457,7 @@ export default function TransactionForm({
               update('amount', e.target.value.replace(/[^\d.]/g, ''))
             }
             placeholder="0"
-            className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm tabular-nums dark:border-neutral-700 dark:bg-neutral-950"
+            className="field mt-1 num"
           />
         </label>
 
@@ -487,7 +470,7 @@ export default function TransactionForm({
               disabled={draft.dateUnknown}
               value={draft.date}
               onChange={(e) => update('date', e.target.value)}
-              className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className="field"
             />
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -544,7 +527,7 @@ export default function TransactionForm({
                         )
                       }
                       placeholder={included ? 'Montant…' : ''}
-                      className="w-32 rounded-lg border border-neutral-300 bg-white px-2 py-1 text-right text-sm tabular-nums disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-950"
+                      className="field !w-28 !px-2 !py-1 text-right text-sm num"
                     />
                   </div>
                 );
@@ -573,7 +556,7 @@ export default function TransactionForm({
                 disabled={draft.categoryUnknown}
                 value={draft.categoryId}
                 onChange={(e) => update('categoryId', e.target.value)}
-                className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+                className="field"
               >
                 <option value="">Choisir…</option>
                 {categories.map((category) => (
@@ -602,12 +585,14 @@ export default function TransactionForm({
             maxLength={120}
             value={draft.description}
             onChange={(e) => update('description', e.target.value)}
-            className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+            className="field"
           />
         </label>
 
         {errors.length > 0 && (
-          <ul className="space-y-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          <ul className="space-y-1 rounded-xl px-3 py-2 text-sm text-[var(--danger)]"
+            style={{ background: 'color-mix(in srgb, var(--danger) 10%, transparent)' }}
+          >
             {errors.map((error) => (
               <li key={error}>{error}</li>
             ))}
@@ -615,14 +600,7 @@ export default function TransactionForm({
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="submit"
-            className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${
-              draft.type === 'EXPENSE'
-                ? 'bg-indigo-600 hover:bg-indigo-700'
-                : 'bg-emerald-600 hover:bg-emerald-700'
-            }`}
-          >
+          <button type="submit" className="btn btn-primary">
             Vérifier et confirmer…
           </button>
         </div>

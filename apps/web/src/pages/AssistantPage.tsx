@@ -262,32 +262,8 @@ export default function AssistantPage() {
   const unavailableLoading = statusQuery.isLoading;
 
   return (
-    <main className="min-h-screen bg-neutral-100 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-      <header className="flex items-center justify-between gap-3 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            to="/"
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
-          >
-            Accueil
-          </Link>
-          <h1 className="text-lg font-semibold">Assistant IA</h1>
-          <span className="hidden text-xs text-neutral-500 sm:inline dark:text-neutral-400">
-            {user?.email}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <NotificationsBell />
-          <ThemeToggle />
-          <button
-            type="button"
-            onClick={() => void signOut()}
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
-          >
-            Déconnexion
-          </button>
-        </div>
-      </header>
+    <div className="flex flex-col gap-5">
+      <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-[28px]">Assistant IA</h1>
 
       <div className="mx-auto max-w-3xl px-4 py-8">
         <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
@@ -455,7 +431,7 @@ export default function AssistantPage() {
           un montant ou un compte modifié au dernier moment.
         </p>
       </div>
-    </main>
+    </div>
   );
 }
 function ProposalCard({

@@ -201,18 +201,8 @@ export default function NotificationsPage() {
   const hasActiveSubscription = subscriptions.some((s) => s.disabledAt === null);
 
   return (
-    <main className="min-h-screen bg-neutral-100 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-      <header className="flex items-center justify-between gap-3 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
-        <div className="flex flex-wrap items-center gap-2">
-          <Link to="/" className={btn}>Accueil</Link>
-          <h1 className="text-lg font-semibold">Notifications</h1>
-          <span className="hidden text-xs text-neutral-500 sm:inline dark:text-neutral-400">{user?.email}</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ThemeToggle />
-          <button type="button" onClick={() => void signOut()} className={btn}>Déconnexion</button>
-        </div>
-      </header>
+    <div className="flex flex-col gap-5">
+      <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-[28px]">Notifications</h1>
 
       <div className="mx-auto max-w-3xl px-4 py-8">
         {error && (
@@ -352,7 +342,7 @@ export default function NotificationsPage() {
           paiement, ni un revenu, ni un remboursement.
         </p>
       </div>
-    </main>
+    </div>
   );
 }
 

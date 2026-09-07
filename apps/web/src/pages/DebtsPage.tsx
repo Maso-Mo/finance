@@ -616,32 +616,8 @@ function DebtsView({
   );
 
   return (
-    <main className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
-      <header className="flex items-center justify-between gap-3 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            to="/"
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
-          >
-            Accueil
-          </Link>
-          <h1 className="text-lg font-semibold">Dettes et créances</h1>
-          <span className="hidden text-xs text-neutral-500 sm:inline dark:text-neutral-400">
-            {user?.email ?? email}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <NotificationsBell />
-          <ThemeToggle />
-          <button
-            type="button"
-            onClick={onSignOut}
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
-          >
-            Déconnexion
-          </button>
-        </div>
-      </header>
+    <div className="flex flex-col gap-5">
+      <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-[28px]">Dettes et créances</h1>
       <div className="mx-auto max-w-4xl space-y-4 px-4 py-6">
         <ErrorText message={actionError} />
         <div className="flex justify-end">
@@ -705,7 +681,7 @@ function DebtsView({
           </div>
         </div>
       )}
-    </main>
+    </div>
   );
 }
 
