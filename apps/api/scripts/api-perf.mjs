@@ -41,7 +41,7 @@ async function main() {
     ['GET /budgets', `/budgets?month=${month}`],
     ['GET /forecast', '/forecast'],
     ['GET /transfers', '/transfers'],
-    ['GET /savings-plans', '/savings-plans'],
+    ['GET /savings-plans', `/savings-plans?month=${month}`],
     ['GET /debts', '/debts'],
     ['GET /notifications', '/notifications'],
   ];
