@@ -24,3 +24,4 @@ export * from './assistant.js';
 export * from './onboarding.js';
 export * from './analytics.js';
 
+export * from './accounting.js';

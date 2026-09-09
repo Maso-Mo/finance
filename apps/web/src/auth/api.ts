@@ -1,3 +1,5 @@
+import { isUnavailable, setUnavailable } from '../lib/connectivity';
+import type { AccountingOverview, AccountingJournal, AccountingKind } from '@finance/shared-types';
 import type {
   AccountUpdateResponse,
   AnalyticsOverviewResponse,
@@ -76,7 +78,7 @@ import type {
  * restauration passe par /auth/refresh (cookie HttpOnly) au chargement.
  */
 
-const API_BASE: string = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
+const API_BASE: string = import.meta.env.VITE_API_URL || '/api';
 
 let accessToken: string | null = null;
 
@@ -104,6 +106,9 @@ interface RequestOptions {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  if (options.method && options.method !== 'GET' && !path.startsWith('/auth/') && (isUnavailable() || (!accessToken && sessionStorage.getItem('finance.offline-user')))) {
+    throw new ApiError(0, 'Cette action nécessite une connexion à Finance.');
+  }
   const headers: Record<string, string> = {};
   if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json';
@@ -118,8 +123,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     // Nécessaire pour que le navigateur envoie le cookie refresh (HttpOnly).
     credentials: 'include',
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-  });
+  }).catch(() => { setUnavailable(true); throw new ApiError(0, options.method && options.method !== 'GET' && !path.startsWith('/auth/') ? 'Cette action nécessite une connexion à Finance.' : 'Connexion impossible.'); });
 
+  if (res.status >= 502) { setUnavailable(true); throw new ApiError(res.status, options.method && options.method !== 'GET' && !path.startsWith('/auth/') ? 'Cette action nécessite une connexion à Finance.' : 'Connexion impossible.'); }
+  setUnavailable(false);
   if (res.status === 204) {
     return undefined as T;
   }
@@ -136,7 +143,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       body && typeof body === 'object' && 'error' in body
         ? String((body as { error: unknown }).error)
         : `Request failed with status ${res.status}.`;
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, res.status === 401 && path === '/auth/login' ? 'Email ou mot de passe incorrect.' : message);
   }
 
   return body as T;
@@ -830,3 +837,17 @@ export type {
 };
 
 
+
+export function apiGetAccountingOverview(month: string): Promise<AccountingOverview> {
+  return request(`/accounting/overview?month=${encodeURIComponent(month)}`);
+}
+export function apiGetAccountingJournal(month: string, kind: AccountingKind, page: number): Promise<AccountingJournal> {
+  return request(`/accounting/journal?month=${encodeURIComponent(month)}&kind=${kind}&page=${page}&limit=25`);
+}
+export async function apiExportAccounting(month: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE}/accounting/export?month=${encodeURIComponent(month)}`, {
+    credentials: 'include', headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+  if (!response.ok) throw new ApiError(response.status, 'Export indisponible.');
+  return response.blob();
+}

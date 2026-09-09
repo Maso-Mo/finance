@@ -45,7 +45,7 @@ export const requireAuth: RequestHandler = (req, _res, next) => {
  */
 export const requireTrustedOrigin: RequestHandler = (req, _res, next) => {
   const origin = req.headers.origin;
-  if (origin && origin !== corsConfig.origin) {
+  if (origin && !corsConfig.origin.includes(origin)) {
     throw new ApiError(403, 'Origin not allowed.');
   }
   next();

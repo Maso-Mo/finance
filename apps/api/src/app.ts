@@ -1,3 +1,4 @@
+import { accountingRouter } from './accounting/accounting.routes.js';
 import 'dotenv/config';
 import express from 'express';
 import type { ErrorRequestHandler } from 'express';
@@ -47,7 +48,10 @@ app.use(helmet());
 // CORS : origine explicite du frontend + credentials (jamais "*" avec credentials).
 app.use(
   cors({
-    origin: corsConfig.origin,
+    origin: (origin, callback) => {
+      if (!origin || corsConfig.origin.includes(origin)) callback(null, true);
+      else callback(new ApiError(403, 'Origin not allowed.'));
+    },
     credentials: true,
   }),
 );
@@ -120,6 +124,7 @@ app.use('/forecast', requireAuth, forecastRouter);
 // Analytique lecture seule du tableau de bord (graphiques) : calculs dérivés
 // du journal réel. GET strictement read-only — aucune écriture, aucun statut.
 app.use('/analytics', requireAuth, analyticsRouter);
+app.use('/accounting', requireAuth, accountingRouter);
 
 // Transferts internes RÉELS entre les comptes de l'utilisateur (étape 9) :
 // un modèle DÉDIÉ — JAMAIS une « dépense source + revenu destination ». GET

@@ -1,5 +1,5 @@
+import { useSnapshotQuery } from '../lib/useSnapshotQuery';
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import type { AnalyticsOverviewResponse, Currency, MonthlyCashflowPoint } from '@finance/shared-types';
 import { apiGetAnalyticsOverview } from '../auth/api';
 import { formatMoney } from '../lib/format';
@@ -30,7 +30,7 @@ export function monthLabel(monthKey: string): string {
 
 const SEGMENT_COLORS = [
   'var(--brand)',
-  'var(--teal)',
+  'var(--positive)',
   'var(--petrol)',
   'var(--violet)',
   'var(--coral)',
@@ -68,7 +68,7 @@ function CashflowChart({ points, currency }: { points: MonthlyCashflowPoint[]; c
     <div>
       <div className="mb-3 flex items-center gap-4 text-[12px] font-medium text-ink2">
         <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[4px]" style={{ background: 'var(--teal)' }} />
+          <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[4px]" style={{ background: 'var(--positive)' }} />
           Revenus
         </span>
         <span className="inline-flex items-center gap-1.5">
@@ -97,7 +97,7 @@ function CashflowChart({ points, currency }: { points: MonthlyCashflowPoint[]; c
                   <span
                     aria-hidden="true"
                     className="w-[min(22px,45%)] rounded-t-[5px]"
-                    style={{ height: `${incomeHeight}%`, background: active ? 'var(--teal-strong)' : 'var(--teal)', opacity: active ? 1 : 0.82 }}
+                    style={{ height: `${incomeHeight}%`, background: active ? 'var(--positive)' : 'var(--positive)', opacity: active ? 1 : 0.82 }}
                   />
                   <span
                     aria-hidden="true"
@@ -119,7 +119,7 @@ function CashflowChart({ points, currency }: { points: MonthlyCashflowPoint[]; c
           <>
             <span className="font-semibold text-ink">{monthLabel(point.month)}</span>
             {' · revenus '}
-            <span className="num font-semibold" style={{ color: 'var(--teal-strong)' }}>
+            <span className="num font-semibold" style={{ color: 'var(--positive)' }}>
               {formatMoney(point.income, currency)}
             </span>
             {' · dépenses '}
@@ -174,8 +174,8 @@ function ExpenseBreakdown({
   }
 
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-      <div className="relative mx-auto h-36 w-36 shrink-0 sm:mx-0">
+    <div className="flex flex-col gap-4">
+      <div className="relative mx-auto h-36 w-36 shrink-0">
         <div
           role="img"
           aria-label={`Répartition des dépenses du mois : ${summary}`}
@@ -200,7 +200,7 @@ function ExpenseBreakdown({
                 className="h-2.5 w-2.5 shrink-0 rounded-full"
                 style={{ background: SEGMENT_COLORS[index % SEGMENT_COLORS.length] ?? 'var(--ink-3)' }}
               />
-              <span className="truncate text-ink2">{category.label}</span>
+              <span className="break-words text-ink2">{category.label}</span>
             </span>
             <span className="shrink-0 text-[13px]">
               <span className="num font-semibold text-ink">{formatMoney(category.amount, currency)}</span>
@@ -222,11 +222,7 @@ export function AnalyticsSection({
   /** Optionnel : date de référence YYYY-MM-DD pour des tests déterministes. */
   today?: string;
 }) {
-  const query = useQuery({
-    queryKey: ['analytics-overview', today ?? 'now'],
-    queryFn: () => apiGetAnalyticsOverview(6, today),
-    staleTime: 60_000,
-  });
+  const query = useSnapshotQuery('analytics', ['analytics-overview', today ?? 'now'], () => apiGetAnalyticsOverview(6, today));
   const data = query.data;
 
   return (
@@ -248,11 +244,12 @@ export function AnalyticsSection({
           className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold text-ink3"
           style={{ background: 'var(--surface-2)' }}
         >
-          <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--teal)' }} />
+          <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--positive)' }} />
           Lecture seule
         </span>
       </div>
 
+      {query.offline && <p role="status" className="rounded-xl bg-raise p-3 text-sm text-ink2"><strong>Hors connexion</strong> · Dernière mise à jour : {new Date(query.syncedAt!).toLocaleString('fr-FR')} · Période : {data?.currentMonth}</p>}
       {query.isLoading && !data ? (
         <div className="grid gap-3 lg:grid-cols-5">
           <Panel className="p-5 lg:col-span-3">
@@ -271,7 +268,7 @@ export function AnalyticsSection({
           style={{ background: 'color-mix(in srgb, var(--danger) 10%, transparent)' }}
         >
           <p className="text-sm" style={{ color: 'var(--danger)' }}>
-            L’analyse est momentanément indisponible.
+            L’analyse est momentanément indisponible. {query.error?.message}
           </p>
           <Button variant="secondary" size="sm" onClick={() => void query.refetch()}>
             Réessayer
@@ -288,7 +285,7 @@ export function AnalyticsSection({
                 Mois par mois — chaque barre est cliquable pour le détail
               </p>
             </div>
-            <CashflowChart points={data.monthlyCashflow} currency={currency} />
+            <CashflowChart points={data.monthlyCashflow} currency={data.currency} />
           </Panel>
           <Panel className="p-5 sm:p-6 lg:col-span-2">
             <div className="mb-4">
@@ -297,7 +294,7 @@ export function AnalyticsSection({
                 Dépenses du mois en cours par catégorie
               </p>
             </div>
-            <ExpenseBreakdown categories={data.currentMonthExpenseCategories} currency={currency} />
+            <ExpenseBreakdown categories={data.currentMonthExpenseCategories} currency={data.currency} />
           </Panel>
         </div>
       ) : null}

@@ -56,7 +56,11 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
   // 1) Statut serveur (une fois par utilisateur et par session).
   useEffect(() => {
-    if (authStatus !== 'authenticated' || !user) return;
+    if (authStatus !== 'authenticated' || !user) {
+      checkedUserRef.current = null; autoShownRef.current = false;
+      setOpen(false); setWantsAutoStart(false);
+      return;
+    }
     if (checkedUserRef.current === user.id) return;
     checkedUserRef.current = user.id;
 
@@ -73,6 +77,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       });
     return () => {
       active = false;
+      checkedUserRef.current = null;
     };
   }, [authStatus, user?.id, user]);
 
@@ -85,9 +90,9 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     if (!wantsAutoStart || autoShownRef.current) return;
     if (pathname !== '/') return;
 
-    autoShownRef.current = true;
     openTimerRef.current = window.setTimeout(() => {
       // Laisse le temps au contenu de l'accueil de se monter.
+      autoShownRef.current = true;
       setOpen(true);
     }, 450);
     return () => {

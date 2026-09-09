@@ -1,5 +1,5 @@
-import { Suspense, useState, type ComponentType } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Suspense, useEffect, useState, type ComponentType } from 'react';
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useOnboarding } from '../onboarding';
 import { NotificationsBell } from './NotificationsBell';
@@ -32,6 +32,7 @@ interface NavEntry {
 const GROUP_1: NavEntry[] = [{ to: '/', label: 'Accueil', icon: IconHome }];
 
 const GROUP_MOVES: NavEntry[] = [
+  { to: '/accounting', label: 'Comptabilité', icon: IconList },
   { to: '/transactions', label: 'Transactions', icon: IconList },
   { to: '/transfers', label: 'Transferts', icon: IconTransfer },
 ];
@@ -49,6 +50,7 @@ const GROUP_WEALTH: NavEntry[] = [
 
 /** Toutes les destinations de « Plus » (mobile) sauf Accueil/Transactions/Planifié/Assistant. */
 const PLUS_ENTRIES: NavEntry[] = [
+  { to: '/accounting', label: 'Comptabilité', icon: IconList },
   { to: '/transfers', label: 'Transferts', icon: IconTransfer },
   { to: '/expected', label: 'Revenus attendus', icon: IconTrendUp },
   { to: '/budgets', label: 'Budgets', icon: IconGauge },
@@ -269,6 +271,14 @@ function MobileBottomNav() {
   const { signOut } = useAuth();
   const { start } = useOnboarding();
   const [plusOpen, setPlusOpen] = useState(false);
+  useEffect(() => {
+    const showTarget = (event: Event) => {
+      const selector = (event as CustomEvent<string | null>).detail;
+      setPlusOpen(Boolean(selector && PLUS_ENTRIES.some(entry => selector === `a[href="${entry.to}"]`) && window.innerWidth < 1024));
+    };
+    window.addEventListener('finance-guide-target', showTarget);
+    return () => window.removeEventListener('finance-guide-target', showTarget);
+  }, []);
   const anyPlusActive = PLUS_ENTRIES.some((entry) => useIsActive(entry.to));
 
   return (
@@ -376,6 +386,9 @@ function MobileBottomNav() {
  * route (lazy) reste intact : les pages sont chargées via <Outlet/> + Suspense.
  */
 export default function Chrome() {
+  const { status } = useAuth();
+  if (status === 'loading') return <p className="p-6 text-ink2">Restauration de session…</p>;
+  if (status === 'guest') return <Navigate to="/login" replace />;
   return (
     <div className="min-h-screen bg-canvas text-ink lg:pl-[264px]">
       <DesktopSidebar />

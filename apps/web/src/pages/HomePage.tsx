@@ -1,3 +1,4 @@
+import { useSnapshotQuery } from '../lib/useSnapshotQuery';
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -64,11 +65,7 @@ export default function HomePage() {
   const today = useMemo(() => toISODate(new Date()), []);
   const monthKey = today.slice(0, 7);
 
-  const dashboardQuery = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: apiGetAccounts,
-    enabled: status === 'authenticated',
-  });
+  const dashboardQuery = useSnapshotQuery('dashboard', ['dashboard'], apiGetAccounts);
 
   const remindersQuery = useQuery({
     queryKey: ['reminders'],
@@ -76,17 +73,9 @@ export default function HomePage() {
     enabled: status === 'authenticated',
   });
 
-  const forecastQuery = useQuery({
-    queryKey: ['financial-forecast', today],
-    queryFn: () => apiGetForecast(today),
-    enabled: status === 'authenticated',
-  });
+  const forecastQuery = useSnapshotQuery('forecast', ['financial-forecast', today], () => apiGetForecast(today));
 
-  const budgetsQuery = useQuery({
-    queryKey: ['budgets', monthKey, today],
-    queryFn: () => apiGetBudgets(monthKey, today),
-    enabled: status === 'authenticated',
-  });
+  const budgetsQuery = useSnapshotQuery('budgets', ['budgets', monthKey, today], () => apiGetBudgets(monthKey, today));
 
   const recentQuery = useQuery({
     queryKey: ['transactions', 1],
@@ -98,7 +87,7 @@ export default function HomePage() {
     mutationFn: ({ id, balance }: { id: string; balance: string }) =>
       apiSetTargetBalance(id, balance),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      void queryClient.invalidateQueries();
       void queryClient.invalidateQueries({ queryKey: ['budgets'] });
     },
   });
@@ -106,7 +95,7 @@ export default function HomePage() {
   const currencyMutation = useMutation({
     mutationFn: apiSetCurrency,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      void queryClient.invalidateQueries();
       void queryClient.invalidateQueries({ queryKey: ['budgets'] });
     },
   });
@@ -201,6 +190,7 @@ export default function HomePage() {
             <IconWallet size={15} className="text-brand-strong" />
             Total disponible
           </div>
+          {dashboardQuery.offline && <p role="status" className="mt-2 text-sm text-ink2">Hors connexion · Dernière mise à jour : {new Date(dashboardQuery.syncedAt!).toLocaleString('fr-FR')}</p>}
           <p className="mt-3 break-words text-[40px] font-bold leading-none tracking-tight num text-ink sm:text-6xl">
             {isLoading ? '…' : formatMoney(totalAvailable, currency)}
           </p>
@@ -221,8 +211,10 @@ export default function HomePage() {
             </p>
           )}
 
+          {updateMutation.isError && <p role="alert" className="mt-3 text-sm text-danger">{updateMutation.error.message}</p>}
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <button
+              id="guide-details"
               type="button"
               onClick={() => setShowDetails((v) => !v)}
               aria-expanded={heroOpen}
@@ -237,13 +229,12 @@ export default function HomePage() {
           <div className="relative mt-6 border-t pt-5" style={{ borderColor: 'var(--edge)' }}>
             <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {spendingAccounts.map((account) => (
-                <li key={account.id}>
-                  <AccountRow
+                <AccountRow
+                    key={account.id}
                     account={account}
                     currency={currency}
                     onUpdate={(id, balance) => updateMutation.mutate({ id, balance })}
                   />
-                </li>
               ))}
             </ul>
             <div
@@ -281,6 +272,7 @@ export default function HomePage() {
       {/* ===== A. Dépenses du mois · B. Prévision fin de mois · Épargne ===== */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
         <Panel id="guide-spent" className="p-4 sm:p-5">
+          {budgetsQuery.offline && <p className="text-xs text-ink2">Hors connexion · Période {budgetsQuery.data?.month} · {new Date(budgetsQuery.syncedAt!).toLocaleString('fr-FR')}</p>}
           <Metric
             label="Dépensé ce mois"
             value={
@@ -294,7 +286,8 @@ export default function HomePage() {
           />
           <p className="mt-1 text-[11px] text-ink3">{monthLabel(monthKey)}</p>
         </Panel>
-        <Panel className="p-4 sm:p-5">
+        <Panel id="guide-forecast" className="p-4 sm:p-5">
+          {forecastQuery.offline && <p className="text-xs text-ink2">Hors connexion · {new Date(forecastQuery.syncedAt!).toLocaleString('fr-FR')}</p>}
           <Metric
             label="Prévision fin de mois"
             value={

@@ -8,6 +8,10 @@ import { OnboardingProvider, OnboardingTour } from './onboarding';
 import App from './App';
 import './index.css';
 
+if (import.meta.env.PROD && 'serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', () => { void navigator.serviceWorker.register('/sw.js').catch(() => undefined); });
+}
+
 // Client TanStack Query (état serveur). Configuré une fois pour toute l'app.
 const queryClient = new QueryClient();
 

@@ -104,7 +104,7 @@ describe('Chrome — ancres de la prise en main guidée', () => {
     const relaunchButtons = await screen.findAllByTestId('relaunch-guide');
     await user.click(relaunchButtons[0]!);
 
-    const dialog = await screen.findByRole('dialog', { name: /Bienvenue dans Finance/ });
-    expect(dialog).toHaveTextContent('Étape 1 / 13');
+    const dialog = await screen.findByRole('dialog', { name: /Total disponible/ });
+    expect(dialog).toHaveTextContent('Étape 1 / 14');
   });
 });

@@ -1,5 +1,13 @@
 @import 'tailwindcss';
 
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2');
+}
+
 /*
  * Dark mode piloté par la classe `.dark` sur <html> (et non par
  * `prefers-color-scheme`), pour permettre les modes clair / sombre / système.
@@ -7,30 +15,28 @@
  */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* =====================================================================
- * DESIGN TOKENS — Finance (palette premium douce)
- * Palette claire « sauge & ivoire » : fond sauge légèrement froid, cartes
- * ivoire (jamais de blanc pur), encres graphite, accent lime pétillant,
- * complément teal/pétrole pour les données. Palette sombre « pétrole &
- * graphite » : fond graphite tirant vers le pétrole (jamais de noir pur),
- * surfaces teintées pétrole, accent lime, teal lumineux. Chaque token
- * conserve un contraste AA pour le texte sur son fond.
- * ===================================================================== */
+/* Palette Finance : tokens sémantiques partagés. */
 :root {
-  --canvas: #eef1e8;
-  --surface: #fbfcf7;
-  --surface-2: #e7ebe0;
-  --surface-3: #dde3d3;
-  --ink: #16191e;
-  --ink-2: #565e6b;
-  --ink-3: #868e99;
-  --edge: rgba(24, 27, 32, 0.09);
+  --primary: var(--brand);
+  --text: var(--ink);
+  --text-muted: var(--ink-2);
+  --border: var(--edge);
+  --surface-raised: var(--surface-2);
+  --warning: var(--lemon);
+  --canvas: #F8FAFC;
+  --surface: #FFFFFF;
+  --surface-2: #F1F5F9;
+  --surface-3: #E2E8F0;
+  --ink: #1E293B;
+  --ink-2: #475569;
+  --ink-3: #64748B;
+  --edge: #E2E8F0;
   --edge-strong: rgba(24, 27, 32, 0.16);
-  --brand: #a9e41c;
-  --brand-ink: #0d1206;
-  --brand-soft: rgba(140, 190, 10, 0.14);
-  --brand-strong: #557a05;
-  --ring: #6f9d10;
+  --brand: #0F172A;
+  --brand-ink: #FFFFFF;
+  --brand-soft: rgba(15, 23, 42, 0.08);
+  --brand-strong: #0F172A;
+  --ring: #0F172A;
   --teal: #08786b;
   --teal-strong: #0b6a5f;
   --petrol: #0d5e72;
@@ -38,7 +44,7 @@
   --violet: #7c6ce0;
   --coral: #ef6a47;
   --lemon: #c7a400;
-  --positive: #118a4e;
+  --positive: #059669;
   --danger: #d93c2f;
   --shadow-card:
     0 1px 2px rgba(18, 22, 16, 0.04), 0 10px 28px -18px rgba(18, 22, 16, 0.18);
@@ -47,10 +53,10 @@
 
   /* Redéfinition de l'échelle « neutral » Tailwind (clair) : le fond de page,
      les cartes et les encres suivent le même langage que les tokens. */
-  --color-neutral-50: #f7f8f3;
-  --color-neutral-100: #f2f4ef;
-  --color-neutral-200: #e6e8df;
-  --color-neutral-300: #d6d9cd;
+  --color-neutral-50: #F8FAFC;
+  --color-neutral-100: #F1F5F9;
+  --color-neutral-200: #E2E8F0;
+  --color-neutral-300: #CBD5E1;
   --color-neutral-400: #b6bcc3;
   --color-neutral-500: #6b7380;
   --color-neutral-600: #545b66;
@@ -61,20 +67,20 @@
 }
 
 html.dark {
-  --canvas: #0a0f13;
-  --surface: #121a1f;
-  --surface-2: #182229;
-  --surface-3: #222f37;
-  --ink: #eef2f4;
-  --ink-2: #9aa7ae;
-  --ink-3: #6d7b82;
-  --edge: rgba(240, 245, 247, 0.08);
+  --canvas: #0B0F17;
+  --surface: #151C2C;
+  --surface-2: #1E293B;
+  --surface-3: #263449;
+  --ink: #F1F5F9;
+  --ink-2: #CBD5E1;
+  --ink-3: #94A3B8;
+  --edge: #1E293B;
   --edge-strong: rgba(240, 245, 247, 0.15);
-  --brand: #b8ff3d;
-  --brand-ink: #12180a;
-  --brand-soft: rgba(184, 255, 61, 0.14);
-  --brand-strong: #c9ff66;
-  --ring: #b8ff3d;
+  --brand: #38BDF8;
+  --brand-ink: #0B0F17;
+  --brand-soft: rgba(56, 189, 248, 0.14);
+  --brand-strong: #38BDF8;
+  --ring: #38BDF8;
   --teal: #34d3bb;
   --teal-strong: #7ae6d4;
   --petrol: #59b9c9;
@@ -82,7 +88,7 @@ html.dark {
   --violet: #b9aaff;
   --coral: #ff8e70;
   --lemon: #ffe06a;
-  --positive: #46d98d;
+  --positive: #10B981;
   --danger: #ff6b5e;
   --shadow-card:
     0 1px 2px rgba(0, 0, 0, 0.25), 0 14px 34px -22px rgba(0, 0, 0, 0.6);
@@ -128,8 +134,7 @@ html.dark {
   --color-petrol: var(--petrol);
   --color-petrol-strong: var(--petrol-strong);
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica,
-    Arial, sans-serif;
+    "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 /* Adapte les contrôles natifs (scrollbars, inputs…) au thème actif. */
@@ -143,6 +148,7 @@ html.dark {
 
 body {
   @apply bg-canvas text-ink antialiased;
+  font-family: var(--font-sans);
 }
 
 /* Focus clavier global, cohérent et bien visible (les deux thèmes). */
@@ -177,9 +183,6 @@ html.theme-transition *::after {
  * On supprime/écrase fortement les durées de transition et d'animation tout en
  * gardant le changement d'état instantané (parfaitement compréhensible).
  */
-@media (prefers-reduced-motion: reduce) {
-  *,
-
 /* =====================================================================
  * COMPOSANTS DE BASE (classes utilitaires partagées par toutes les pages)
  * ===================================================================== */
@@ -203,7 +206,7 @@ html.theme-transition *::after {
     box-shadow: var(--shadow-pop);
   }
 
-  /* Boutons : primaire = lime. Vocabulaire produit respecté (Enregistrer,
+  /* Boutons : primaire = token primary. Vocabulaire produit respecté (Enregistrer,
      Ajouter, Confirmer — jamais « Envoyer/Retirer/Payer »). */
   .btn,
   .btn-primary,
@@ -231,6 +234,7 @@ html.theme-transition *::after {
   .btn-secondary {
     color: var(--ink);
     background: var(--surface-2);
+    border: 1px solid var(--border);
   }
   .btn-secondary:not(:disabled):hover {
     background: var(--surface-3);
@@ -330,6 +334,8 @@ html.theme-transition *::after {
   color: var(--ink);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;

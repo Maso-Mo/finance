@@ -52,3 +52,16 @@ const choices: ThemeChoice[] = ['light', 'dark'];
 it('le type public du choix est restreint à light|dark', () => {
   expect(choices).toHaveLength(2);
 });
+
+import { readFileSync } from 'node:fs';
+const css = readFileSync('src/index.css', 'utf8');
+it('uses the exact requested light/dark tokens and Inter', () => {
+  const light = css.split(':root {')[1]!.split('html.dark {')[0]!;
+  const dark = css.split('html.dark {')[1]!.split('/* Exposition')[0]!;
+  for (const [token, lightValue, darkValue] of [
+    ['canvas', '#F8FAFC', '#0B0F17'], ['surface', '#FFFFFF', '#151C2C'], ['brand', '#0F172A', '#38BDF8'], ['positive', '#059669', '#10B981'], ['ink', '#1E293B', '#F1F5F9'], ['edge', '#E2E8F0', '#1E293B'],
+  ]) {
+    expect(light).toContain(`--${token}: ${lightValue};`); expect(dark).toContain(`--${token}: ${darkValue};`);
+  }
+  expect(css).toMatch(/--font-sans:\s*"Inter"/);
+});

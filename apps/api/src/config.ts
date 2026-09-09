@@ -40,5 +40,5 @@ export const authConfig = {
 
 export const corsConfig = {
   // Frontend autorisé (origine explicite, jamais "*" avec credentials).
-  origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+  origin: (process.env.CORS_ORIGIN ?? 'http://localhost:5173').split(',').map(origin => origin.trim()).filter(Boolean),
 };

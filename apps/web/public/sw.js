@@ -74,3 +74,24 @@ self.addEventListener('notificationclick', (event) => {
     })(),
   );
 });
+
+// Versioned app shell only. Financial responses and auth are never cached.
+const SHELL_CACHE = 'finance-shell-__BUILD_ID__';
+const SHELL_ASSETS = /* __SHELL_ASSETS__ */ [];
+self.addEventListener('install', event => {
+  event.waitUntil(caches.open(SHELL_CACHE).then(cache => cache.addAll(SHELL_ASSETS)).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', event => {
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('finance-shell-') && key !== SHELL_CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
+});
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  if (event.request.mode === 'navigate') {
+    event.respondWith(fetch(event.request).then(async response => response.status >= 500 ? (await caches.match('/index.html', { cacheName: SHELL_CACHE })) || response : response).catch(async () => (await caches.match('/index.html', { cacheName: SHELL_CACHE })) || Response.error()));
+  } else if (SHELL_ASSETS.includes(url.pathname)) {
+    // Versioned same-origin static files are identical across Origin headers.
+    // Vite's Vary: Origin must not make crossorigin module requests miss the precache.
+    event.respondWith(caches.match(event.request, { cacheName: SHELL_CACHE, ignoreVary: true }).then(cached => cached || fetch(event.request)));
+  }
+});

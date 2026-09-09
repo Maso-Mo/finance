@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Route, Routes, Navigate } from 'react-router-dom';
 import Chrome from './components/chrome';
 
+const AccountingPage = lazy(() => import('./pages/AccountingPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -37,6 +38,7 @@ export default function App() {
 
         <Route element={<Chrome />}>
           <Route path="/" element={<HomePage />} />
+          <Route path="/accounting" element={<AccountingPage />} />
           <Route path="/transactions" element={<TransactionsPage />} />
           <Route path="/planned" element={<PlannedExpensesPage />} />
           <Route path="/expected" element={<ExpectedIncomesPage />} />

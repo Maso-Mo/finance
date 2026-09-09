@@ -1,5 +1,5 @@
 /**
- * Prise en main guidée — définition des 13 étapes.
+ * Prise en main guidée — définition des 14 étapes.
  *
  * Chaque étape peut pointer un élément réel de l'interface (sélecteur CSS).
  * Le tour encadre cet élément quand il est présent et visible ; sinon il
@@ -22,71 +22,78 @@ export interface OnboardingStep {
   target?: string;
 }
 
-/** 13 étapes chronologiques — le dernier index est la récapitulation. */
+/** 14 étapes chronologiques — le dernier index est la récapitulation. */
 export const ONBOARDING_STEPS: OnboardingStep[] = [
   {
-    title: 'Bienvenue dans Finance',
-    body: "Votre argent au même endroit. Cette visite guidée de trente secondes vous montre l'essentiel pour démarrer sereinement — vous pouvez la quitter à tout moment et la relancer depuis le menu « Plus ».",
+    "title": "Total disponible",
+    "target": "#guide-total",
+    "body": "Le total réunit Banque, MVola, Orange Money, Airtel Money et Cash. L’épargne reste à part."
   },
   {
-    title: 'Votre tableau de bord',
-    target: '#guide-total',
-    body: "Tout part d'ici : le Total disponible, les comptes reliés et les soldes dérivés, actualisés à chaque opération enregistrée.",
+    "title": "Détails comptes",
+    "target": "#guide-details",
+    "body": "Ouvre les détails pour consulter le solde de chaque compte et déclarer un solde réel."
   },
   {
-    title: 'Enregistrer une opération',
-    target: '#guide-add',
-    body: "Le bouton « Ajouter » ouvre la page Transactions : une dépense ou un revenu se saisit en quelques champs, avec catégorie et compte.",
+    "title": "Transactions",
+    "target": "a[href=\"/transactions\"]",
+    "body": "Enregistre tes revenus et dépenses réels, avec leur date, leur catégorie et le compte concerné."
   },
   {
-    title: 'Dépensé ce mois',
-    target: '#guide-spent',
-    body: "Cette carte cumule vos dépenses réelles du mois. Elle sert de repère : votre budget global est mis à jour dans la foulée.",
+    "title": "Graphiques",
+    "target": "#guide-analytics",
+    "body": "Compare revenus et dépenses sur six mois et consulte la répartition des dépenses du mois."
   },
   {
-    title: 'Budget global',
-    target: '#guide-budget',
-    body: 'Définissez une limite mensuelle, globale ou par catégorie. La jauge bascule sur la couleur d’alerte si vous la dépassez — un repère, jamais un blocage.',
+    "title": "Dépenses planifiées",
+    "target": "a[href=\"/planned\"]",
+    "body": "Prépare les dépenses à venir. Seule la confirmation d’un paiement réel crée une opération."
   },
   {
-    title: 'À vérifier',
-    target: '#guide-todo',
-    body: 'Les dépenses planifiées et revenus attendus arrivent ici quand leur échéance approche : vous confirmez le paiement réel, et seul ce paiement crée une opération.',
+    "title": "Revenus attendus",
+    "target": "a[href=\"/expected\"]",
+    "body": "Prévois les rentrées à venir puis confirme leur réception réelle."
   },
   {
-    title: 'Vos opérations récentes',
-    target: '#guide-recent',
-    body: 'Le journal liste chaque mouvement daté et classé par compte. Le détail se corrige à tout moment ; rien n’est définitif.',
+    "title": "Budget",
+    "target": "#guide-budget",
+    "body": "Suis tes dépenses par rapport à ta limite mensuelle, globale ou par catégorie."
   },
   {
-    title: 'Analyse de vos finances',
-    target: '#guide-analytics',
-    body: 'Les graphiques comparent vos revenus et dépenses mois par mois, puis montrent où votre argent est parti ce mois-ci. Lecture seule : aucun calcul ne modifie vos données.',
+    "title": "Prévision",
+    "target": "#guide-forecast",
+    "body": "Consulte une estimation du disponible en fin de mois, selon les mouvements et échéances connus."
   },
   {
-    title: 'Naviguer',
-    target: '[data-guide="nav"]',
-    body: 'La colonne de gauche (ou la barre du bas sur mobile) organise votre espace : Mouvements, Planification, Patrimoine. Chaque entrée reste à un clic.',
+    "title": "Transferts",
+    "target": "a[href=\"/transfers\"]",
+    "body": "Déplace de l’argent entre tes comptes sans créer un revenu ou une dépense."
   },
   {
-    title: 'L’assistant',
-    target: '[data-guide="assistant"]',
-    body: 'L’assistant lit votre journal et propose des actions concrètes, comme sécuriser un mois ou planifier une épargne. Rien n’est appliqué sans votre confirmation.',
+    "title": "Épargne",
+    "target": "a[href=\"/savings\"]",
+    "body": "Suis tes objectifs et tes contributions réelles vers le compte Épargne."
   },
   {
-    title: 'Notifications',
-    target: '[data-guide="bell"]',
-    body: 'La cloche rassemble les rappels « Reçu ? / Payé ? », les fins de mois et les alertes utiles, avec un canal choisi pour chaque type de rappel.',
+    "title": "Dettes",
+    "target": "a[href=\"/debts\"]",
+    "body": "Retrouve ce que tu dois et ce qu’on te doit, puis enregistre les remboursements réels."
   },
   {
-    title: 'Le menu « Plus »',
-    target: '[data-guide="plus"]',
-    body: 'Sur mobile, « Plus » regroupe transferts, épargne, dettes et notifications. C’est aussi ici que vous retrouverez ce guide après l’avoir terminé.',
+    "title": "Notifications",
+    "target": "[data-guide=\"bell\"]",
+    "body": "Retrouve les rappels utiles. Une notification ne confirme jamais une opération à ta place."
   },
   {
-    title: 'Et maintenant ?',
-    body: "Vous connaissez l'essentiel. Une dernière confirmation et votre progression est sauvegardée : vous pourrez relancer ce guide à tout moment, sans rien défaire.",
+    "title": "Assistant",
+    "target": "a[href=\"/assistant\"]",
+    "body": "L’assistant propose des actions ; tu les vérifies et les confirmes avant leur application."
   },
+  {
+    "title": "Comptabilité",
+    "target": "a[href=\"/accounting\"]",
+    "body": "Cette vue te permet de contrôler l'ensemble de tes mouvements, de vérifier tes soldes et de comprendre le résultat de chaque période sans modifier les règles financières de Finance."
+  }
 ];
 
 /** Synthèse affichée sur l'étape de récapitulation (avant confirmation). */

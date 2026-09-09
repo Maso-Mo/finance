@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { useOnboarding } from './OnboardingProvider';
-import { ONBOARDING_RECAP, ONBOARDING_STEPS, ONBOARDING_TOTAL } from './steps';
+import { ONBOARDING_STEPS, ONBOARDING_TOTAL } from './steps';
 import { Button } from '../components/ui';
 import { IconArrowRight, IconCheck, IconClose, IconInfo } from '../components/icons';
 
 /**
- * Visite guidée « prise en main » — 13 étapes en surbrillance.
+ * Visite guidée « prise en main » — 14 étapes en surbrillance.
  * - Grand écran : anneau autour de l'élément ciblé + carte flottante.
  * - Mobile : carte bas de page + anneau quand l'élément est trouvable.
  * - Rien n'est persisté avant « J'ai compris » + confirmation « Terminer ».
@@ -57,12 +57,12 @@ function computeCardStyle(
   rect: Rect | null,
   viewport: { width: number; height: number },
   desktop: boolean,
+  cardHeight: number,
 ): CSSProperties | null {
   if (!desktop) return null;
   const cardWidth = 408;
-  const cardHeight = 400;
   const gap = 24;
-  const margin = 8;
+  const margin = 16;
 
   let left: number;
   if (rect && rect.x + rect.width + gap + cardWidth <= viewport.width - margin) {
@@ -102,7 +102,10 @@ function TourDialog() {
   const [desktop, setDesktop] = useState(isDesktopViewport);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
+  const [cardHeight, setCardHeight] = useState(400);
   const [busy, setBusy] = useState(false);
+  const cardRef = useRef<HTMLElement>(null);
+  const confirmRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
 
   const step = ONBOARDING_STEPS[stepIndex];
@@ -115,6 +118,13 @@ function TourDialog() {
     const onChange = (event: MediaQueryListEvent) => setDesktop(event.matches);
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!cardRef.current || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => setCardHeight(cardRef.current?.getBoundingClientRect().height ?? 400));
+    observer.observe(cardRef.current);
+    return () => observer.disconnect();
   }, []);
 
   // Verrouille le défilement de la page pendant le guide.
@@ -133,13 +143,11 @@ function TourDialog() {
       setRect(null);
       return;
     }
+    window.dispatchEvent(new CustomEvent('finance-guide-target', { detail: targetSelector }));
     const el = pickVisible(targetSelector);
-    if (!el) {
-      setRect(null);
-      return;
-    }
+    if (!el) setRect(null);
     try {
-      el.scrollIntoView({
+      el?.scrollIntoView({
         block: 'center',
         behavior: prefersReducedMotion() ? 'auto' : 'smooth',
       });
@@ -151,7 +159,9 @@ function TourDialog() {
     let frame = 0;
     const update = () => {
       if (!alive) return;
-      const r = el.getBoundingClientRect();
+      const target = pickVisible(targetSelector);
+      if (!target) return;
+      const r = target.getBoundingClientRect();
       setRect({ x: r.x, y: r.y, width: r.width, height: r.height });
     };
     const hasRaf =
@@ -173,6 +183,31 @@ function TourDialog() {
       if (hasRaf) window.cancelAnimationFrame(frame);
     };
   }, [stepIndex]);
+
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    return () => {
+      window.dispatchEvent(new CustomEvent('finance-guide-target', { detail: null }));
+      previous?.focus();
+    };
+  }, []);
+
+  useEffect(() => {
+    const panel = confirmOpen ? confirmRef.current : cardRef.current;
+    const trap = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || !panel) return;
+      const buttons = Array.from(panel.querySelectorAll<HTMLElement>('button:not(:disabled), [href], [tabindex="0"]'));
+      const first = buttons[0], last = buttons.at(-1);
+      if (!first || !last) return;
+      if (event.shiftKey && (document.activeElement === first || !buttons.includes(document.activeElement as HTMLElement))) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !panel.contains(document.activeElement))) {
+        event.preventDefault(); first.focus();
+      }
+    };
+    document.addEventListener('keydown', trap);
+    return () => document.removeEventListener('keydown', trap);
+  }, [confirmOpen]);
 
   // Échap : ferme la confirmation d'abord, sinon le guide (sans persister).
   useEffect(() => {
@@ -230,7 +265,7 @@ function TourDialog() {
   const isLast = stepIndex >= ONBOARDING_TOTAL - 1;
   const isFirst = stepIndex === 0;
   const viewport = { width: window.innerWidth, height: window.innerHeight };
-  const cardStyle = computeCardStyle(rect, viewport, desktop);
+  const cardStyle = computeCardStyle(rect, viewport, desktop, cardHeight);
   const scrim = 'rgba(7, 11, 14, 0.58)';
   const total = ONBOARDING_TOTAL;
   const progress = ((stepIndex + 1) / total) * 100;
@@ -238,15 +273,18 @@ function TourDialog() {
 
   const tourCard = (
     <section
+      ref={cardRef}
+      inert={confirmOpen}
       role="dialog"
+      aria-describedby="tour-description"
       aria-modal="true"
       aria-labelledby="tour-title"
       className={
         desktop
-          ? 'card fixed z-10 flex max-h-[min(600px,calc(100dvh_-_24px))] w-[408px] flex-col overflow-hidden'
-          : 'card fixed inset-x-2 bottom-2 z-10 flex max-h-[calc(100dvh_-_16px)] flex-col overflow-hidden sm:mx-auto sm:max-w-[520px]'
+          ? 'card fixed z-[1020] flex max-h-[calc(100dvh_-_32px)] w-[408px] flex-col overflow-hidden'
+          : 'card fixed inset-x-4 bottom-[max(16px,env(safe-area-inset-bottom))] z-[1020] flex max-h-[calc(100dvh_-_32px)] flex-col overflow-hidden sm:mx-auto sm:max-w-[520px]'
       }
-      style={desktop && cardStyle ? { ...cardStyle } : undefined}
+      style={{ ...(desktop && cardStyle ? cardStyle : {}), background: 'var(--surface)', color: 'var(--text)', pointerEvents: 'auto' }}
     >
       <div className="flex items-center justify-between gap-3 px-5 pt-4">
         <span
@@ -278,30 +316,15 @@ function TourDialog() {
         <h2 id="tour-title" ref={titleRef} tabIndex={-1} className="text-lg font-bold tracking-tight text-ink outline-none">
           {step.title}
         </h2>
-        <p className="mt-1.5 text-sm leading-relaxed text-ink2">{step.body}</p>
-        {isLast ? (
-          <ul className="mt-4 space-y-2">
-            {ONBOARDING_RECAP.map((line) => (
-              <li key={line} className="flex items-start gap-2.5 text-sm text-ink2">
-                <span
-                  aria-hidden="true"
-                  className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
-                  style={{ background: 'var(--brand-soft)' }}
-                >
-                  <IconCheck size={12} className="text-[var(--brand-strong)]" />
-                </span>
-                {line}
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        <p id="tour-description" style={{ color: 'var(--text-muted)' }} className="mt-1.5 text-sm leading-relaxed">{step.body}</p>
+        {isLast && <p className="mt-4 text-sm font-semibold text-ink">Tu connais maintenant l’essentiel de Finance.</p>}
       </div>
-      <div className="flex items-center justify-between gap-3 border-t px-5 py-4" style={{ borderColor: 'var(--edge)' }}>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t px-5 py-4" style={{ borderColor: 'var(--edge)' }}>
         <Button variant="ghost" size="sm" disabled={isFirst} onClick={goPrevious}>
           Précédent
         </Button>
         <Button variant="primary" size="sm" onClick={goNext}>
-          {isLast ? "J'ai compris" : 'Suivant'}
+          {isLast ? "J'ai compris, terminer le guide" : 'Suivant'}
           {!isLast ? <IconArrowRight size={14} /> : null}
         </Button>
       </div>
@@ -314,11 +337,11 @@ function TourDialog() {
   );
 
   return createPortal(
-    <div className="fixed inset-0 z-[90]">
+    <div className="fixed inset-0 z-[1000]">
       {hasTargetRing && rect ? (
         <div
           aria-hidden="true"
-          className="fixed rounded-[18px]"
+          className="pointer-events-none fixed z-[1010] rounded-[18px]"
           style={{
             left: rect.x - 10,
             top: rect.y - 10,
@@ -333,7 +356,7 @@ function TourDialog() {
       )}
       {tourCard}
       {confirmOpen ? (
-        <div className="fixed inset-0 z-[95] flex items-end justify-center p-4 md:items-center">
+        <div className="fixed inset-0 z-[1030] flex items-end justify-center p-4 md:items-center">
           <div
             aria-hidden="true"
             className="absolute inset-0"
@@ -343,6 +366,8 @@ function TourDialog() {
             }}
           />
           <div
+            ref={confirmRef}
+            aria-describedby="tour-confirm-description"
             role="dialog"
             aria-modal="true"
             aria-labelledby="tour-confirm-title"
@@ -350,14 +375,12 @@ function TourDialog() {
           >
             <div className="border-b px-5 py-4" style={{ borderColor: 'var(--edge)' }}>
               <h2 id="tour-confirm-title" className="text-base font-semibold tracking-tight text-ink">
-                Terminer la prise en main ?
+                Terminer le guide ?
               </h2>
             </div>
             <div className="px-5 py-4">
-              <p className="text-sm leading-relaxed text-ink2">
-                Une fois confirmé, le guide ne se lancera plus automatiquement,
-                mais restera accessible depuis le menu « Plus ». Vos données
-                financières ne sont jamais modifiées par cette action.
+              <p id="tour-confirm-description" className="text-sm leading-relaxed text-ink2">
+                Il ne s’affichera plus automatiquement, mais tu pourras le revoir quand tu veux.
               </p>
               {finishError ? (
                 <p
@@ -382,7 +405,7 @@ function TourDialog() {
         </div>
       ) : null}
     </div>,
-    document.getElementById('root') ?? document.body,
+    document.body,
   );
 }
 

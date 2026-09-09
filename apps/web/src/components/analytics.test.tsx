@@ -7,9 +7,10 @@ import type { AnalyticsOverviewResponse } from '@finance/shared-types';
 import { AnalyticsSection } from './analytics';
 import { apiGetAnalyticsOverview } from '../auth/api';
 
-vi.mock('../auth/api', () => ({
-  apiGetAnalyticsOverview: vi.fn(),
+vi.mock('../auth/api', async importOriginal => ({
+  ...await importOriginal<typeof import('../auth/api')>(), apiGetAnalyticsOverview: vi.fn(),
 }));
+vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ status: 'authenticated', user: { id: 'analytics-test' } }) }));
 
 const mockedGet = vi.mocked(apiGetAnalyticsOverview);
 

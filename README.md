@@ -93,13 +93,93 @@ pnpm --filter @finance/api db:audit
 transferts, épargne, dettes, statuts liés, doublons budgets/plans, dédup
 notifications, propositions assistant.
 
+## Accès PC et téléphone (développement)
+
+Après la configuration initiale, trois processus suffisent :
+
+```bash
+docker compose up -d
+pnpm --filter @finance/api dev
+pnpm --filter @finance/web exec vite --host 0.0.0.0
+```
+
+Sur un réseau de confiance, `--host 0.0.0.0` expose Vite aux appareils du réseau.
+Pour limiter l'écoute à la carte Wi-Fi, utiliser `--host <IP_LOCALE_DU_PC>`.
+Le navigateur appelle `/api` : Vite transmet à l'API locale, et réécrit le
+chemin du cookie HttpOnly vers `/api/auth`. Ne pas définir `VITE_API_URL` à
+`localhost:4000` pour le téléphone. Un éventuel proxy de production doit
+également transmettre `/api` et adapter le chemin du cookie, ou configurer
+explicitement une URL API autorisée.
+
+Dans `apps/api/.env`, configurer les origines exactes, séparées par des virgules :
+`CORS_ORIGIN=http://localhost:5173,http://<IP_LOCALE_DU_PC>:5173`.
+Redémarrer l'API après modification. Le port fait partie de l'origine ;
+si 5173 est occupé, choisir un port libre et adapter cette liste.
+Le contrôle Origin reste actif. Les cookies Secure de production ne changent pas.
+
+### Checklist téléphone
+
+1. Connecter PC et téléphone au même Wi-Fi.
+2. Trouver l'IPv4 Wi-Fi du PC (`ip -4 addr`) et configurer `CORS_ORIGIN` ci-dessus.
+3. Lancer DB : `docker compose up -d`.
+4. Lancer API : `pnpm --filter @finance/api dev`.
+5. Lancer Vite : `pnpm --filter @finance/web exec vite --host 0.0.0.0` (ou l'IP Wi-Fi précise).
+6. Ouvrir l'URL Network affichée par Vite sur le téléphone.
+7. S'inscrire avec un compte de test.
+8. Se déconnecter puis se connecter.
+9. Ouvrir le dashboard.
+10. Créer une petite opération de test.
+11. Actualiser la page.
+12. Vérifier la session et l'opération enregistrée.
+
+### Lecture offline
+
+Après une réponse API réussie, IndexedDB conserve les derniers agrégats
+analytiques, les six soldes, le résumé des budgets et la prévision. Aucun
+historique de transactions ni secret d'authentification n'est copié. Les données
+sont isolées par utilisateur, validées et plafonnées à 128 Ko par snapshot.
+Une nouvelle réponse remplace le snapshot ; aucune donnée locale ne remonte
+vers PostgreSQL. Les boutons d'écriture retournent une erreur claire hors connexion.
+
+Si l'API manque pendant une session, les graphiques utilisent ces snapshots
+avec « Hors connexion », période et date de synchronisation. Après un reload,
+un choix explicite permet de revoir les données du compte déjà utilisé dans
+cet onglet ; aucune donnée n'est restaurée automatiquement sans identité.
+Une nouvelle session/absence de snapshot nécessite d'abord une connexion.
+Le logout supprime les snapshots et le cache de l'utilisateur sur cet appareil,
+y compris quand l'API manque, et empêche le refresh automatique ultérieur.
+
+Le build de production précache l'app shell, les chunks, Inter locale et l'icône
+via le Service Worker existant. Aucune réponse API financière ne va dans Cache
+Storage. Vérifier avec `pnpm --filter @finance/web build`, puis
+`pnpm --filter @finance/web exec vite preview --host 127.0.0.1` ; ajouter
+`http://localhost:4173` à `CORS_ORIGIN` pour ce test.
+
+Checklist offline téléphone, séparée de l'accès LAN :
+
+1. Servir le build depuis une origine HTTPS reconnue par le téléphone.
+2. Se connecter, attendre les graphiques et l'installation du Service Worker.
+3. Couper l'accès au serveur, recharger, puis choisir la consultation locale.
+4. Vérifier les deux graphiques, la période, le timestamp et le blocage des écritures.
+5. Rétablir la connexion et vérifier la mise à jour, puis se déconnecter et vérifier le nettoyage.
+
+**Lecture offline complète sur téléphone nécessite une origine HTTPS.**
+HTTP LAN permet l'accès au site, mais ne valide ni Service Worker offline ni Web Push.
+
 ## Tests / builds
 
 ```bash
-pnpm -r test          # 680+ tests (core 188, API 372, web 120)
+pnpm -r test
 pnpm -r typecheck
 pnpm -r build
 ```
+
+## Validation guide, comptabilité et offline
+
+`node apps/web/scripts/verify-finance.mjs` utilise l'API locale, Vite et le build
+preview. Il crée ses propres comptes de test et n'efface pas les comptes existants.
+Variables facultatives : `FINANCE_WEB_URL`, `FINANCE_BUILD_URL`, `CHROMIUM_PATH`,
+`FINANCE_SCREENSHOTS` (défaut `/tmp/finance-validation`).
 
 ## E2E navigateur réel (Chromium système)
 

@@ -53,8 +53,8 @@ describe('Prise en main guidée — OnboardingProvider + Tour', () => {
     mockedGetOnboarding.mockResolvedValue({ completed: false });
     renderGuide('/');
 
-    const dialog = await screen.findByRole('dialog', { name: /Bienvenue dans Finance/ });
-    expect(within(dialog).getByText('Étape 1 / 13')).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: /Total disponible/ });
+    expect(within(dialog).getByText('Étape 1 / 14')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Précédent' })).toBeDisabled();
     expect(within(dialog).getByRole('button', { name: /Suivant/ })).toBeInTheDocument();
   });
@@ -64,22 +64,22 @@ describe('Prise en main guidée — OnboardingProvider + Tour', () => {
     const user = userEvent.setup();
     renderGuide('/');
 
-    await screen.findByRole('dialog', { name: /Bienvenue dans Finance/ });
+    await screen.findByRole('dialog', { name: /Total disponible/ });
 
     // 12 « Suivant » pour atteindre l'étape de récapitulation (13e).
     for (let i = 0; i < ONBOARDING_TOTAL - 1; i += 1) {
       await user.click(screen.getByRole('button', { name: /Suivant/ }));
     }
 
-    const recap = screen.getByRole('dialog', { name: /Et maintenant/ });
-    expect(within(recap).getByText('Étape 13 / 13')).toBeInTheDocument();
+    const recap = screen.getByRole('dialog', { name: /Comptabilité/ });
+    expect(within(recap).getByText('Étape 14 / 14')).toBeInTheDocument();
     expect(
-      within(recap).getByText('Ajoutez vos revenus et dépenses au fil de l’eau.'),
+      within(recap).getByText('Tu connais maintenant l’essentiel de Finance.'),
     ).toBeInTheDocument();
 
     // Rien n'est persisté avant confirmation.
-    await user.click(within(recap).getByRole('button', { name: "J'ai compris" }));
-    const confirm = await screen.findByRole('dialog', { name: /Terminer la prise en main/ });
+    await user.click(within(recap).getByRole('button', { name: "J'ai compris, terminer le guide" }));
+    const confirm = await screen.findByRole('dialog', { name: /Terminer le guide/ });
     expect(mockedCompleteOnboarding).not.toHaveBeenCalled();
 
     await user.click(within(confirm).getByRole('button', { name: 'Terminer' }));
@@ -95,7 +95,7 @@ describe('Prise en main guidée — OnboardingProvider + Tour', () => {
     const user = userEvent.setup();
     renderGuide('/');
 
-    const dialog = await screen.findByRole('dialog', { name: /Bienvenue dans Finance/ });
+    const dialog = await screen.findByRole('dialog', { name: /Total disponible/ });
     await user.click(
       within(dialog).getByRole('button', { name: 'Quitter le guide sans rien enregistrer' }),
     );
@@ -116,8 +116,24 @@ describe('Prise en main guidée — OnboardingProvider + Tour', () => {
     expect(screen.queryAllByRole('dialog')).toHaveLength(0);
 
     await user.click(screen.getByRole('button', { name: 'Relancer le guide' }));
-    const dialog = await screen.findByRole('dialog', { name: /Bienvenue dans Finance/ });
-    expect(within(dialog).getByText('Étape 1 / 13')).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: /Total disponible/ });
+    expect(within(dialog).getByText('Étape 1 / 14')).toBeInTheDocument();
     expect(mockedCompleteOnboarding).not.toHaveBeenCalled();
   });
+});
+
+it('exposes a description, traps Tab and restores focus on Escape', async () => {
+  mockedGetOnboarding.mockResolvedValue({ completed: true });
+  const user = userEvent.setup(); renderGuide();
+  const launch = screen.getByRole('button', { name: 'Relancer le guide' });
+  await user.click(launch);
+  const dialog = await screen.findByRole('dialog', { name: 'Total disponible' });
+  expect(dialog).toHaveAccessibleDescription(/Banque/);
+  expect(dialog.parentElement?.parentElement).toBe(document.body);
+  const next = within(dialog).getByRole('button', { name: /Suivant/ });
+  next.focus(); await user.tab();
+  expect(dialog.contains(document.activeElement)).toBe(true);
+  await user.keyboard('{Escape}');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(launch).toHaveFocus();
 });
