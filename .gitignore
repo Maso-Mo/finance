@@ -30,3 +30,4 @@ apps/api/prisma/backups/
 .idea/
 .DS_Store
 Thumbs.db
+.clinerules
