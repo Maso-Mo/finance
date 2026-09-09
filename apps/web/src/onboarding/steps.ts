@@ -65,14 +65,9 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
     "body": "Consulte une estimation du disponible en fin de mois, selon les mouvements et échéances connus."
   },
   {
-    "title": "Transferts",
-    "target": "a[href=\"/transfers\"]",
-    "body": "Déplace de l’argent entre tes comptes sans créer un revenu ou une dépense."
-  },
-  {
     "title": "Épargne",
     "target": "a[href=\"/savings\"]",
-    "body": "Suis tes objectifs et tes contributions réelles vers le compte Épargne."
+    "body": "Suis tes objectifs et enregistre tes mouvements réels vers le compte Épargne. Retirer de l'épargne reste un transfert interne entre tes comptes — jamais une dépense ou un revenu."
   },
   {
     "title": "Dettes",

@@ -323,7 +323,7 @@ export default function HomePage() {
       {budget ? (
         <Panel id="guide-budget" className="p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-ink">Budget global</p>
+            <p className="text-sm font-semibold text-ink">Limite de dépenses du mois</p>
             {budget.status === 'VERT' ? <BadgeVert /> : <BadgeDepasse />}
           </div>
           <div className="mt-3 flex items-end justify-between gap-3">
@@ -353,9 +353,9 @@ export default function HomePage() {
       ) : (
         <Panel id="guide-budget" className="flex flex-wrap items-center justify-between gap-3 p-5">
           <div>
-            <p className="text-sm font-semibold text-ink">Budget global</p>
+            <p className="text-sm font-semibold text-ink">Limite de dépenses du mois</p>
             <p className="text-xs text-ink2">
-              Aucun budget défini pour {monthLabel(monthKey).toLowerCase()}.
+              Aucune limite définie pour {monthLabel(monthKey).toLowerCase()}.
             </p>
           </div>
           <Link to="/budgets" className="btn btn-secondary btn-sm">

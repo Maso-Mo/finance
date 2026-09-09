@@ -222,7 +222,6 @@ async function main() {
     ['/planned', 'Dépenses à venir'],
     ['/expected', 'Revenus à venir'],
     ['/budgets', 'Budgets'],
-    ['/transfers', 'Transferts'],
     ['/savings', 'Épargne'],
     ['/debts', 'Dettes et créances'],
     ['/notifications', 'Notifications'],

@@ -281,6 +281,11 @@ export default function BudgetsPage() {
   return (
     <div className="flex flex-col gap-5">
       <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-[28px]">Budgets</h1>
+      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+        Le budget est votre LIMITE DE DÉPENSES du mois, globale ou par
+        catégorie. C’est un repère de lecture : il ne retire jamais d’argent
+        d’un compte.
+      </p>
       <div className="mx-auto max-w-3xl px-4 py-8">
         {error && (
           <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">

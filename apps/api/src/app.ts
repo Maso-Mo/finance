@@ -28,6 +28,7 @@ import { transfersRouter } from './transfers/transfers.routes.js';
 import { debtsRouter } from './debts/debts.routes.js';
 import { forecastRouter } from './forecast/forecast.routes.js';
 import { savingsPlansRouter } from './savings/savings.routes.js';
+import { bankStatementsRouter } from './ingestion/bank-statements.routes.js';
 import {
   notificationsRouter,
   notificationPreferencesRouter,
@@ -136,6 +137,11 @@ app.use('/transfers', requireAuth, transfersRouter);
 // de l'argent. Seule une contribution (AccountTransfer RÉEL vers SAVINGS)
 // modifie le solde Épargne. GET strictement read-only.
 app.use('/savings-plans', requireAuth, savingsPlansRouter);
+
+// Ingestion LOCALE de relevés (fondation V1) : PREVIEW strictement read-only ;
+// IMPORT re-parse le texte soumis, déduplique (idempotent) et n'enregistre
+// que des lignes « compte/catégorie inconnus » — 100 % local, sans LLM.
+app.use('/ingestion/bank-statements', requireAuth, bankStatementsRouter);
 
 // Dettes et créances (étape 11) : « je dois » / « on me doit » + règlements
 // partiels. Un règlement STANDARD n'impacte QUE le solde du compte (jamais

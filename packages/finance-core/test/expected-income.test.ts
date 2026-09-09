@@ -7,6 +7,7 @@ import {
   expectedIncomeTimingIsValid,
   isConfirmedIncome,
   isPendingIncome,
+  zonedDateISO,
 } from '../src/index.js';
 
 const PENDING = 'PENDING';
@@ -148,5 +149,42 @@ describe('Un revenu futur n’entre JAMAIS dans currentBalance', () => {
     // identique — les revenus futurs ne sont pas des flux.
     const balance = currentBalance('100000', netFlow, '0');
     expect(balance.toString()).toBe('100000');
+  });
+});
+
+/**
+ * RÉGRESSION — « aujourd'hui » est un JOUR LOCAL, jamais un instant UTC.
+ *
+ * Un revenu futur ne doit JAMAIS apparaître « aujourd'hui » (dueToday) quand
+ * le jour local de l'utilisateur est encore la veille du jour UTC.
+ */
+describe('Régression : jour LOCAL vs UTC (revenu futur ≠ aujourd’hui)', () => {
+  it('12. UTC déjà demain → le revenu de demain reste « À venir »', () => {
+    // 2026-09-09T02:00:00Z = 21:00 le 2026-09-08 à New York (UTC−5).
+    const localToday = zonedDateISO(
+      '2026-09-09T02:00:00.000Z',
+      'America/New_York',
+    );
+    expect(localToday).toBe('2026-09-08');
+
+    // Revenu prévu le 2026-09-09 = DEMAIN localement → jamais « aujourd'hui ».
+    expect(classifyExpectedIncomeByDate('2026-09-09', localToday, PENDING)).toBe(
+      'upcoming',
+    );
+    // Seul le jour LOCAL égal au jour du revenu vaut dueToday.
+    expect(classifyExpectedIncomeByDate('2026-09-08', localToday, PENDING)).toBe(
+      'dueToday',
+    );
+  });
+
+  it('13. la classification ignore l’horloge : seul le jour calendaire compte', () => {
+    // Même seconde de part et d'autre de minuit local à Antananarivo (UTC+3) :
+    // le bucket change UNIQUEMENT quand le JOUR change.
+    expect(
+      zonedDateISO('2026-09-08T20:59:59.000Z', 'Indian/Antananarivo'),
+    ).toBe('2026-09-08');
+    expect(
+      zonedDateISO('2026-09-08T21:00:00.000Z', 'Indian/Antananarivo'),
+    ).toBe('2026-09-09');
   });
 });

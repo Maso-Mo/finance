@@ -10,6 +10,8 @@ const TransactionsPage = lazy(() => import('./pages/TransactionsPage'));
 const PlannedExpensesPage = lazy(() => import('./pages/PlannedExpensesPage'));
 const ExpectedIncomesPage = lazy(() => import('./pages/ExpectedIncomesPage'));
 const BudgetsPage = lazy(() => import('./pages/BudgetsPage'));
+// Page des transferts INTERNES : conservée uniquement pour les usages
+// internes (retraits manuels Épargne → compte), plus aucune entrée visible.
 const TransfersPage = lazy(() => import('./pages/TransfersPage'));
 const SavingsPage = lazy(() => import('./pages/SavingsPage'));
 const DebtsPage = lazy(() => import('./pages/DebtsPage'));
@@ -43,6 +45,7 @@ export default function App() {
           <Route path="/planned" element={<PlannedExpensesPage />} />
           <Route path="/expected" element={<ExpectedIncomesPage />} />
           <Route path="/budgets" element={<BudgetsPage />} />
+          {/* /transfers : plus dans aucune navigation — page interne uniquement. */}
           <Route path="/transfers" element={<TransfersPage />} />
           <Route path="/savings" element={<SavingsPage />} />
           <Route path="/debts" element={<DebtsPage />} />

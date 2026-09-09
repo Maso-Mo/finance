@@ -105,6 +105,6 @@ describe('Chrome — ancres de la prise en main guidée', () => {
     await user.click(relaunchButtons[0]!);
 
     const dialog = await screen.findByRole('dialog', { name: /Total disponible/ });
-    expect(dialog).toHaveTextContent('Étape 1 / 14');
+    expect(dialog).toHaveTextContent('Étape 1 / 13');
   });
 });

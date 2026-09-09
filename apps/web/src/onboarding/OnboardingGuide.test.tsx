@@ -54,7 +54,7 @@ describe('Prise en main guidée — OnboardingProvider + Tour', () => {
     renderGuide('/');
 
     const dialog = await screen.findByRole('dialog', { name: /Total disponible/ });
-    expect(within(dialog).getByText('Étape 1 / 14')).toBeInTheDocument();
+    expect(within(dialog).getByText('Étape 1 / 13')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Précédent' })).toBeDisabled();
     expect(within(dialog).getByRole('button', { name: /Suivant/ })).toBeInTheDocument();
   });
@@ -72,7 +72,7 @@ describe('Prise en main guidée — OnboardingProvider + Tour', () => {
     }
 
     const recap = screen.getByRole('dialog', { name: /Comptabilité/ });
-    expect(within(recap).getByText('Étape 14 / 14')).toBeInTheDocument();
+    expect(within(recap).getByText('Étape 13 / 13')).toBeInTheDocument();
     expect(
       within(recap).getByText('Tu connais maintenant l’essentiel de Finance.'),
     ).toBeInTheDocument();
@@ -117,7 +117,7 @@ describe('Prise en main guidée — OnboardingProvider + Tour', () => {
 
     await user.click(screen.getByRole('button', { name: 'Relancer le guide' }));
     const dialog = await screen.findByRole('dialog', { name: /Total disponible/ });
-    expect(within(dialog).getByText('Étape 1 / 14')).toBeInTheDocument();
+    expect(within(dialog).getByText('Étape 1 / 13')).toBeInTheDocument();
     expect(mockedCompleteOnboarding).not.toHaveBeenCalled();
   });
 });

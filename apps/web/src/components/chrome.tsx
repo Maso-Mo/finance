@@ -19,7 +19,6 @@ import {
   IconScale,
   IconSparkles,
   IconTarget,
-  IconTransfer,
   IconTrendUp,
 } from './icons';
 
@@ -34,7 +33,6 @@ const GROUP_1: NavEntry[] = [{ to: '/', label: 'Accueil', icon: IconHome }];
 const GROUP_MOVES: NavEntry[] = [
   { to: '/accounting', label: 'Comptabilité', icon: IconList },
   { to: '/transactions', label: 'Transactions', icon: IconList },
-  { to: '/transfers', label: 'Transferts', icon: IconTransfer },
 ];
 
 const GROUP_PLAN: NavEntry[] = [
@@ -51,7 +49,6 @@ const GROUP_WEALTH: NavEntry[] = [
 /** Toutes les destinations de « Plus » (mobile) sauf Accueil/Transactions/Planifié/Assistant. */
 const PLUS_ENTRIES: NavEntry[] = [
   { to: '/accounting', label: 'Comptabilité', icon: IconList },
-  { to: '/transfers', label: 'Transferts', icon: IconTransfer },
   { to: '/expected', label: 'Revenus attendus', icon: IconTrendUp },
   { to: '/budgets', label: 'Budgets', icon: IconGauge },
   { to: '/savings', label: 'Épargne', icon: IconTarget },

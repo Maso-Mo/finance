@@ -1019,9 +1019,23 @@ export default function SavingsPage() {
           <div
             role="dialog"
             aria-modal="true"
+            aria-label="Supprimer cet objectif ?"
             className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
           >
-            <h2 className="text-base font-semibold">Supprimer cet objectif ?</h2>
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="text-base font-semibold">Supprimer cet objectif ?</h2>
+              <button
+                type="button"
+                aria-label="Fermer"
+                onClick={() => {
+                  setDeleting(null);
+                  setError(null);
+                }}
+                className="rounded-lg border border-neutral-300 px-2 py-0.5 text-sm leading-6 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              >
+                ✕
+              </button>
+            </div>
             <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
               Le plan disparaît de ce mois, mais aucun transfert réel vers
               Épargne ne sera annulé : l’argent déjà épargné reste sur votre
