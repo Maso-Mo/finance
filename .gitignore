@@ -31,3 +31,8 @@ apps/api/prisma/backups/
 .DS_Store
 Thumbs.db
 .clinerules
+
+# Environment secrets
+.env
+.env.*
+!.env.example
