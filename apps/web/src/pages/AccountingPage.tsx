@@ -7,6 +7,7 @@ import { toMoney } from '@finance/finance-core';
 import { apiExportAccounting, apiGetAccountingJournal, apiGetAccountingOverview, apiSetTargetBalance } from '../auth/api';
 import { Button, Panel } from '../components/ui';
 import { Dialog } from '../components/overlay';
+import BankStatementImport from '../components/BankStatementImport';
 import { ACCOUNT_TYPE_LABELS, formatMoney, toISODate } from '../lib/format';
 
 const filters: [AccountingKind, string][] = [['ALL', 'Tous'], ['INCOME', 'Revenus'], ['EXPENSE', 'Dépenses'], ['TRANSFER', 'Transferts'], ['ADJUSTMENT', 'Corrections'], ['DEBT', 'Dettes']];
@@ -47,6 +48,7 @@ export default function AccountingPage() {
       <Button variant="secondary" size="sm" onClick={() => changeMonth(toISODate(new Date()).slice(0, 7))}>Ce mois</Button>
       <Button variant="secondary" size="sm" onClick={() => changeMonth(toISODate(previousMonth).slice(0, 7))}>Mois précédent</Button>
       <Button variant="secondary" size="sm" onClick={() => void exportPeriod()}>Exporter la période</Button>
+      <BankStatementImport currency={currency} />
     </div>
     {exportError && <p role="alert">{exportError}</p>}
     {overview.isError && <p role="alert">{overview.error.message}</p>}

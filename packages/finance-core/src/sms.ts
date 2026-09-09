@@ -1,52 +1,64 @@
 /**
  * Parsing SMS « mobile money » — finance-core (socle PUR, aucune I/O).
+ * V1 : fondation d'une future ingestion SMS. Fonctions pures et
+ * déterministes : même message → même résultat, sans LLM, sans réseau,
+ * sans effet de bord, sans base de données.
  *
- * V1 volontairement restreinte : ce module pose la FONDATION d'un futur
- * ingestion par SMS (MVola / Orange Money / Airtel Money). Il ne contient
- * QUE des fonctions pures et déterministes : même message → même résultat,
- * sans LLM, sans réseau, sans effet de bord.
- *
- * Règles de prudence (aucune fausse écriture financière) :
- *  - on ne crée JAMAIS de Transaction à partir d'un SMS : ce module produit
- *    un candidat SÛR (`kind` INCOME/EXPENSE) ou `null`/UNKNOWN ; la décision
- *    d'enregistrer reste toujours humaine et passe par les services existants ;
- *  - un montant reconnu doit être explicite ; un SMS ambigu reste UNKNOWN ;
- *  - l'horodatage du message (`receivedAt`) n'est JAMAIS utilisé comme date
- *    d'occurrence : seule une date lisible dans le corps est proposée, et
- *    l'utilisateur peut toujours la corriger (« je ne sais plus »).
+ * SÉMANTIQUE : un SMS décrit un ÉVÉNEMENT TECHNIQUE, pas un mouvement
+ * comptable. MONEY_RECEIVED ≠ INCOME, MONEY_SENT ≠ EXPENSE,
+ * CASH_DEPOSIT ≠ INCOME, CASH_WITHDRAWAL ≠ EXPENSE. Un SMS reste un
+ * CANDIDAT à confirmer humainement ; on n'invente jamais une valeur
+ * (champ absent = null). `occurredAt` n'est proposé que si une date est
+ * lisible dans le corps ; `receivedAt` (métadonnée de réception) reste
+ * séparé. `confidence` = force des indices (high/medium/low).
  */
 
-/** Opérateur « mobile money » reconnu (sender normalisé). */
+/** Opérateur « mobile money » reconnu (expéditeur normalisé). */
 export type MobileMoneyProvider = 'MVOLA' | 'ORANGE_MONEY' | 'AIRTEL_MONEY';
 
-/** Sens proposé d'un SMS (jamais écrit en base directement). */
-export type SmsParseKind = 'INCOME' | 'EXPENSE' | 'UNKNOWN';
+/** Événement TECHNIQUE décrit par le SMS (jamais une écriture comptable). */
+export type SmsEventType =
+  | 'MONEY_RECEIVED'
+  | 'MONEY_SENT'
+  | 'CASH_WITHDRAWAL'
+  | 'CASH_DEPOSIT'
+  | 'PAYMENT'
+  | 'UNKNOWN';
+
+export type SmsConfidence = 'high' | 'medium' | 'low';
 
 /** Forme minimale d'un message entrant (source : relais mobile futur). */
 export interface SmsMessageInput {
-  /** Expéditeur tel que reçu (ex. « MVOLA », « ORANGE », « Airtel Money »). */
   sender: string;
-  /** Corps du message, tel que reçu. */
   body: string;
-  /** Reçu à (ISO). N'est PAS une date d'occurrence. */
+  /** Reçu à (ISO). Métadonnée — JAMAIS une date d'occurrence. */
   receivedAt?: string;
 }
 
-/** Résultat de parsing d'un SMS (candidat, jamais une écriture). */
+/** Résultat de parsing d'un SMS (candidat technique, jamais une écriture). */
 export interface ParsedSms {
   provider: MobileMoneyProvider | null;
-  kind: SmsParseKind;
+  type: SmsEventType;
   /** Montant en chaîne décimale exacte (« 100000.00 »), ou null. */
   amount: string | null;
-  /** Frais éventuels explicitement lus, ou null. */
-  feeAmount: string | null;
-  /** Contrepartie / bénéficiaire lisible, ou null. */
-  counterparty: string | null;
-  /** Référence de transaction (ex. « Ref 1234 »), ou null. */
+  /** Frais explicitement lus (« Frais : … »), ou null. */
+  fee: string | null;
+  /** Solde après opération explicitement lu, ou null. */
+  balanceAfter: string | null;
+  /** Nom de la contrepartie lisible, ou null. */
+  counterpartyName: string | null;
+  /** Numéro de la contrepartie lisible, ou null. */
+  counterpartyNumber: string | null;
+  /** Référence de transaction (« Ref … »), ou null. */
   reference: string | null;
+  /** Lieu de l'opération si réellement lisible, sinon null. */
+  location: string | null;
   /** Date du JOUR lisible dans le corps (« YYYY-MM-DD »), ou null. */
   occurredAt: string | null;
-  /** Expéditeur d'origine (pour l'audit et les tests). */
+  /** Force des indices détectés. */
+  confidence: SmsConfidence;
+  /** Métadonnée de réception (séparée de la date du message). */
+  receivedAt: string | null;
   sender: string;
   raw: string;
 }
@@ -68,12 +80,12 @@ export function providerFromSender(sender: string): MobileMoneyProvider | null {
   return null;
 }
 
-/** « Déjà-vu » du corps normalisé : clé stable pour dédupliquer les SMS. */
+/** Clé de déduplication stable (espace/casse normalisés). */
 export function smsDedupeKey(sender: string, body: string): string {
   return `sms|${sender.toUpperCase()}|${body.replace(/\s+/g, ' ').trim().toUpperCase()}`;
 }
 
-/** Normalise un texte (minuscules, accents retirés) pour les tests de mots. */
+/** Normalise un texte (minuscules, accents retirés). */
 function normalize(text: string): string {
   return text
     .normalize('NFD')
@@ -81,62 +93,10 @@ function normalize(text: string): string {
     .toLowerCase();
 }
 
-const INCOME_MARKERS = [
-  'credit',
-  'credite',
-  'recu',
-  'reception',
-  'vous avez recu',
-  'depot',
-  'versement',
-  'salaire',
-  'paiement recu',
-  'transfert recu',
-];
-
-const EXPENSE_MARKERS = [
-  'debit',
-  'debite',
-  'paiement',
-  'retrait',
-  'achat',
-  'facture',
-  'envoye',
-  'transfert envoye',
-  'vous avez envoye',
-];
-
-/** Montant « … 1 000,00 Ar / MGA 1,000.00 / 10 000 Ar … » → décimal exact. */
-export function extractSmsAmount(body: string): string | null {
-  // Fenêtres autour d'une devise explicite (Ar/MGA/Ariary/EUR/€) : un nombre
-  // adjacent à la devise est un montant quasi certain, même sans décimale.
-  const currencySpots: string[] = [];
-  const currencyRe = /(?:Ar|MGA|Ariary|ariary|EUR|€)/g;
-  let spot: RegExpExecArray | null;
-  while ((spot = currencyRe.exec(body)) !== null) {
-    const at = spot.index;
-    currencySpots.push(body.slice(Math.max(0, at - 60), at + 60));
-  }
-  const windows = currencySpots.length > 0 ? currencySpots : [body];
-  const requiresFraction = currencySpots.length === 0;
-  for (const window of windows) {
-    const numbers = window.match(/[0-9]+(?:[ .,][0-9]+)*/g);
-    if (!numbers) continue;
-    for (const raw of numbers) {
-      const hasDecimal = /[.,]\d{1,2}$/.test(raw.replace(/\s/g, ''));
-      const tooShort = (raw.replace(/[^0-9]/g, '').length < 3) && !hasDecimal;
-      if (tooShort || (requiresFraction && !hasDecimal)) continue;
-      const normalized = normalizeAmountCandidate(raw);
-      if (normalized) return normalized;
-    }
-  }
-  return null;
-}
-
 /**
- * Normalise un candidat numérique en chaîne décimale exacte.
- * Règle : le DERNIER séparateur (« . » ou « , ») est la décimale (1 à 2
- * chiffres) ; les autres séparateurs sont des milliers et sont retirés.
+ * Normalise un candidat numérique en chaîne décimale exacte. Le DERNIER
+ * séparateur (« . » ou « , ») est la décimale (1-2 chiffres) ; les autres
+ * séparateurs sont des milliers et sont retirés.
  */
 export function normalizeAmountCandidate(raw: string): string | null {
   const clean = raw.replace(/\s/g, '');
@@ -155,6 +115,37 @@ export function normalizeAmountCandidate(raw: string): string | null {
   return `${intPart}.${frac.padStart(2, '0')}`;
 }
 
+/** Première valeur monétaire crédible du corps, ou null. */
+export function extractSmsAmount(body: string): string | null {
+  const sliceAround = (at: number, before: number, after: number) =>
+    body.slice(Math.max(0, at - before), at + after);
+  const units = ['ar', 'mga', 'ariary'];
+  const spots: number[] = [];
+  for (const unit of units) {
+    let at = -1;
+    for (;;) {
+      at = body.toLowerCase().indexOf(unit, at + 1);
+      if (at === -1) break;
+      spots.push(at);
+    }
+  }
+  const windows = spots.length > 0 ? spots : [body.length];
+  const requiresFraction = spots.length === 0;
+  for (const spot of windows) {
+    const win = spots.length > 0 ? sliceAround(spot, 60, 60) : body;
+    const numbers = win.match(/[0-9]+(?:[ .,][0-9]+)*/g);
+    if (!numbers) continue;
+    for (const raw of numbers) {
+      const hasDecimal = /[.,]\d{1,2}$/.test(raw.replace(/\s/g, ''));
+      const tooShort = raw.replace(/[^0-9]/g, '').length < 3 && !hasDecimal;
+      if (tooShort || (requiresFraction && !hasDecimal)) continue;
+      const normalized = normalizeAmountCandidate(raw);
+      if (normalized) return normalized;
+    }
+  }
+  return null;
+}
+
 /** Date « 25/12/2026 » ou « 2026-12-25 » dans le corps → « YYYY-MM-DD ». */
 export function extractSmsDate(body: string): string | null {
   const dmy = body.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
@@ -166,50 +157,196 @@ export function extractSmsDate(body: string): string | null {
     return `${year}-${mm}-${dd}`;
   }
   const iso = body.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
-  if (iso) return iso[0];
-  return null;
+  return iso ? iso[0] : null;
+}
+
+/** Montant situé APRÈS un libellé (« Frais : 250,00 Ar »), ou null. */
+function amountAfterLabel(body: string, label: string): string | null {
+  const index = body.toLowerCase().indexOf(label);
+  if (index === -1) return null;
+  const after = body.slice(index + label.length, index + label.length + 60);
+  return extractSmsAmount(after);
+}
+
+/** Frais explicitement lus (« frais »/« fee »), ou null. */
+export function extractSmsFee(body: string): string | null {
+  return amountAfterLabel(body, 'frais') ?? amountAfterLabel(body, 'fee');
+}
+
+/** Solde après opération (« solde »/« balance »), ou null. */
+export function extractSmsBalanceAfter(body: string): string | null {
+  return amountAfterLabel(body, 'solde') ?? amountAfterLabel(body, 'balance');
+}
+
+/** Nom de contrepartie (« de/vers/à/from/to <nom> »), ou null. */
+export function extractCounterpartyName(body: string): string | null {
+  const match = body.match(
+    /(?:de|vers|\ba\b|from|to)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .'-]{2,40})/i,
+  );
+  if (!match) return null;
+  const rawName = match[1] ?? '';
+  const name = rawName.trim();
+  if (/^\d/.test(name)) return null; // c'est un numéro, pas un nom
+  return name;
+}
+
+/** Numéro de contrepartie (0… / +261…, 9 à 11 chiffres), ou null. */
+export function extractCounterpartyNumber(body: string): string | null {
+  const match = body.match(/(?:0\d{9}|\+261\d{9})/);
+  return match ? match[0] : null;
+}
+
+/** Référence (« Ref 1234 / Reference : ABC »), ou null. */
+export function extractSmsReference(body: string): string | null {
+  const match = body.match(
+    /ref(?:erence)?\.?\s*:?\s*([0-9A-Za-z-]{4,20})/i,
+  );
+  return match?.[1] ?? null;
+}
+
+/** Lieu réellement lisible (agence/guichet/distributeur…), sinon null. */
+export function extractSmsLocation(body: string): string | null {
+  const match = body.match(
+    /(?:agence|guichet|distributeur|boutique|chez)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ '-]{2,40})/i,
+  );
+  return match?.[1]?.trim() ?? null;
+}
+
+// --- Classification de l'ÉVÉNEMENT TECHNIQUE (jamais comptable) ---
+// Chaque liste opère sur le corps normalisé (minuscules, accents retirés).
+// L'ordre est choisi du plus spécifique au plus général : un retrait/dépôt
+// agent ou un paiement marchand prime sur un simple MONEY_SENT/RECEIVED.
+
+const WITHDRAWAL_MARKERS = [
+  'retrait',
+  'retire',
+  'retirer',
+  'cash out',
+  'withdrawal',
+  'distributeur',
+];
+
+const DEPOSIT_MARKERS = [
+  'depot',
+  'depose',
+  'deposer',
+  'cash in',
+  'versement especes',
+  'versement en especes',
+];
+
+const PAYMENT_MARKERS = [
+  'paiement',
+  'paye',
+  'payer',
+  'achat',
+  'facture',
+  'payment',
+  'marche',
+  'boutique',
+];
+
+const RECEIVED_MARKERS = [
+  'vous avez recu',
+  'vous avez ete credite',
+  'a recu',
+  'reception',
+  'credit de',
+  'received',
+  'credited',
+];
+
+const SENT_MARKERS = [
+  'vous avez envoye',
+  'a envoye',
+  'envoye a',
+  'debit de',
+  'transfert a',
+  'vous avez transfere',
+  'sent',
+  'debited',
+];
+
+/** Marqueurs génériques (debit/credit seuls) → confiance moyenne. */
+const GENERIC_DEBIT_MARKERS = ['debit', 'debite', 'sortie'];
+const GENERIC_CREDIT_MARKERS = ['credit', 'credite', 'entree'];
+
+/**
+ * Classe l'événement technique décrit par un SMS. Retourne UNIQUEMENT le type
+ * et la confiance : aucune classification comptable (income/expense) ici.
+ */
+function classifySmsEvent(
+  normalized: string,
+): { type: SmsEventType; confidence: SmsConfidence } {
+  const has = (markers: string[]) =>
+    markers.some((marker) => normalized.includes(marker));
+
+  const explicitEvent = (markers: string[]) =>
+    markers.some((marker) => normalized.includes(marker));
+
+  if (explicitEvent(WITHDRAWAL_MARKERS)) {
+    return { type: 'CASH_WITHDRAWAL', confidence: 'high' };
+  }
+  if (explicitEvent(DEPOSIT_MARKERS)) {
+    return { type: 'CASH_DEPOSIT', confidence: 'high' };
+  }
+  if (explicitEvent(PAYMENT_MARKERS)) {
+    return { type: 'PAYMENT', confidence: 'high' };
+  }
+  const received = has(RECEIVED_MARKERS);
+  const sent = has(SENT_MARKERS);
+  if (received && !sent) {
+    return { type: 'MONEY_RECEIVED', confidence: 'high' };
+  }
+  if (sent && !received) {
+    return { type: 'MONEY_SENT', confidence: 'high' };
+  }
+  if (received && sent) {
+    // Direction contradictoire : on ne devine pas.
+    return { type: 'UNKNOWN', confidence: 'low' };
+  }
+  const genericDebit = has(GENERIC_DEBIT_MARKERS);
+  const genericCredit = has(GENERIC_CREDIT_MARKERS);
+  if (genericCredit && !genericDebit) {
+    return { type: 'MONEY_RECEIVED', confidence: 'medium' };
+  }
+  if (genericDebit && !genericCredit) {
+    return { type: 'MONEY_SENT', confidence: 'medium' };
+  }
+  return { type: 'UNKNOWN', confidence: 'low' };
 }
 
 /**
  * Parse un SMS « mobile money » de façon PURE et déterministe.
  *
  * Retourne toujours un objet `ParsedSms` (jamais d'exception) : les champs non
- * reconnus sont null et `kind` vaut UNKNOWN dès que la direction est ambiguë.
+ * reconnus sont null et `type` vaut UNKNOWN dès que l'événement est ambigu.
+ * Aucune classification comptable automatique (income/expense) n'est émise.
  */
 export function parseMoneySms(message: SmsMessageInput): ParsedSms {
   const provider = providerFromSender(message.sender);
   const body = message.body;
   const normalized = normalize(body);
   const amount = extractSmsAmount(body);
+  const { type, confidence } = classifySmsEvent(normalized);
   const occurredAt = extractSmsDate(body);
-
-  let kind: SmsParseKind = 'UNKNOWN';
-  if (amount) {
-    const incomeHit = INCOME_MARKERS.some((marker) => normalized.includes(marker));
-    const expenseHit = EXPENSE_MARKERS.some((marker) => normalized.includes(marker));
-    if (incomeHit && !expenseHit) {
-      kind = 'INCOME';
-    } else if (expenseHit && !incomeHit) {
-      kind = 'EXPENSE';
-    }
-  }
-
-  const counterpartyMatch = body.match(
-    /(?:de|vers|a|from|to)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .'-]{2,40})/i,
-  );
-  const referenceMatch = body.match(
-    /ref(?:erence)?\.?\s*:?\s*([0-9A-Za-z-]{4,20})/i,
-  );
 
   return {
     provider,
-    kind,
+    type,
     amount,
-    feeAmount: null,
-    counterparty: counterpartyMatch?.[1]?.trim() ?? null,
-    reference: referenceMatch?.[1] ?? null,
+    fee: extractSmsFee(body),
+    balanceAfter: extractSmsBalanceAfter(body),
+    counterpartyName: extractCounterpartyName(body),
+    counterpartyNumber: extractCounterpartyNumber(body),
+    reference: extractSmsReference(body),
+    location: extractSmsLocation(body),
     occurredAt,
+    confidence,
+    receivedAt: message.receivedAt ?? null,
     sender: message.sender,
     raw: body,
   };
 }
+
+

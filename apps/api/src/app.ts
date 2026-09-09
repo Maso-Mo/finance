@@ -28,6 +28,7 @@ import { transfersRouter } from './transfers/transfers.routes.js';
 import { debtsRouter } from './debts/debts.routes.js';
 import { forecastRouter } from './forecast/forecast.routes.js';
 import { savingsPlansRouter } from './savings/savings.routes.js';
+import { savingsFlowsRouter } from './savings/savings-flows.routes.js';
 import { bankStatementsRouter } from './ingestion/bank-statements.routes.js';
 import {
   notificationsRouter,
@@ -137,6 +138,11 @@ app.use('/transfers', requireAuth, transfersRouter);
 // de l'argent. Seule une contribution (AccountTransfer RÉEL vers SAVINGS)
 // modifie le solde Épargne. GET strictement read-only.
 app.use('/savings-plans', requireAuth, savingsPlansRouter);
+
+// Flux Épargne COMPLETS (étape 10) : propositions post-revenu RÉEL (GET /next
+// read-only, dismiss persistant, confirm = UN SEUL AccountTransfer vers
+// SAVINGS) + retraits réels de l'Épargne (jamais au-delà du solde disponible).
+app.use('/savings', requireAuth, savingsFlowsRouter);
 
 // Ingestion LOCALE de relevés (fondation V1) : PREVIEW strictement read-only ;
 // IMPORT re-parse le texte soumis, déduplique (idempotent) et n'enregistre

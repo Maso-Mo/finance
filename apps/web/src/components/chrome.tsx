@@ -5,6 +5,7 @@ import { useOnboarding } from '../onboarding';
 import { NotificationsBell } from './NotificationsBell';
 import { ThemeToggle } from './ThemeToggle';
 import { Dialog } from './overlay';
+import SavingsPrompt from './SavingsPrompt';
 import { Button, cx } from './ui';
 import {
   IconArrowRight,
@@ -406,6 +407,7 @@ export default function Chrome() {
           </Suspense>
         </div>
       </main>
+      <SavingsPrompt />
       <MobileBottomNav />
     </div>
   );

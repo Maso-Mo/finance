@@ -38,13 +38,61 @@ function importDescription(description: string | null): string {
   return full.length <= 120 ? full : `${full.slice(0, 116)}…`;
 }
 
-/** Aperçu PURE : parse le texte sans aucune écriture ni lecture métier. */
+/** Clé de déduplication identique à l'import (type + montant + jour + description). */
+function statementKey(
+  type: string,
+  amount: string,
+  date: string,
+  description: string,
+): string {
+  return `${type}|${Number(amount).toFixed(2)}|${date}|${description}`;
+}
+
+/**
+ * Aperçu STRICTEMENT read-only : parse le texte et signale les lignes déjà
+ * importées (déduplication visible AVANT l'import). Aucune écriture : seule
+ * une LECTURE des Transactions « [Relevé] » de l'utilisateur est faite.
+ */
 export async function previewStatement(
+  userId: string,
   input: StatementPreviewRequest,
 ): Promise<StatementPreviewResponse> {
   const parsed = parseStatementText(input.text, {
     provider: input.provider ?? 'BANK',
   });
+
+  let existingKeys: Set<string> | null = null;
+  const datedRows = parsed.rows.filter((row) => row.date !== null);
+  if (datedRows.length > 0) {
+    const matchers = datedRows.map((row) => ({
+      userId,
+      type: row.kind,
+      amount: row.amount,
+      occurredAt: new Date(`${row.date}T12:00:00.000Z`),
+      description: importDescription(row.description),
+      deletedAt: null,
+    }));
+    const found = await prisma.transaction.findMany({
+      where: { OR: matchers },
+      select: {
+        type: true,
+        amount: true,
+        occurredAt: true,
+        description: true,
+      },
+    });
+    existingKeys = new Set(
+      found.map((row) =>
+        statementKey(
+          row.type,
+          row.amount.toFixed(2),
+          (row.occurredAt?.toISOString() ?? '').slice(0, 10),
+          row.description ?? '',
+        ),
+      ),
+    );
+  }
+
   return {
     provider: parsed.provider,
     rows: parsed.rows.map((row) => ({
@@ -54,6 +102,12 @@ export async function previewStatement(
       date: row.date,
       description: row.description,
       raw: row.raw,
+      alreadyImported:
+        row.date !== null &&
+        existingKeys !== null &&
+        existingKeys.has(
+          statementKey(row.kind, row.amount, row.date, importDescription(row.description)),
+        ),
     })),
     ignored: parsed.ignored,
     headers: parsed.headers,

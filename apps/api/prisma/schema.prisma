@@ -118,6 +118,23 @@ enum SavingsPlanMode {
   PERCENTAGE
 }
 
+/// Statut d'une PROPOSITION d'épargne liée à un revenu réel reçu (étape 10).
+///
+/// Une proposition n'est JAMAIS de l'argent :
+///  - PENDING   : visible, en attente de décision humaine (jamais créée
+///    plusieurs fois pour le même revenu : contrainte unique par Transaction
+///    INCOME) ;
+///  - DISMISSED : l'utilisateur a explicitement « ignoré » — elle ne
+///    réapparaît plus (reload, re-login, retry) ;
+///  - CONFIRMED : l'utilisateur a confirmé un montant → UN SEUL AccountTransfer
+///    source → SAVINGS a été créé (avec lien plan éventuel). Aucune
+///    Transaction EXPENSE/INCOME parallèle.
+enum SavingsSuggestionStatus {
+  PENDING
+  DISMISSED
+  CONFIRMED
+}
+
 /// Direction d'une dette / créance (étape 11). NE JAMAIS déduire le sens
 /// implicitement : tous les montants stockés restent POSITIFS, la direction
 /// porte le sens.
@@ -198,6 +215,7 @@ model User {
   expectedIncomes        ExpectedIncome[]
   monthlyBudgets         MonthlyBudget[]
   savingsPlans           MonthlySavingsPlan[]
+  savingsSuggestions     SavingsSuggestion[]
   debts                  Debt[]
   debtSettlements        DebtSettlement[]
   notificationPreference NotificationPreference?
@@ -274,6 +292,7 @@ model Account {
   adjustments       AccountAdjustment[]
   outgoingTransfers AccountTransfer[]              @relation("TransferSource")
   incomingTransfers AccountTransfer[]              @relation("TransferDestination")
+  savingsSuggestions SavingsSuggestion[]           @relation("SavingsSuggestionSource")
   debtSettlements   DebtSettlement[]
 
   // V1 : au plus un compte de chaque type par utilisateur.
@@ -319,6 +338,7 @@ model Transaction {
   // Relation 1-1 vers le revenu futur confirmé reçu (étape 7) : un même
   // ExpectedIncome ne peut générer qu'UNE seule Transaction INCOME active.
   receivedExpectedIncome  ExpectedIncome?                @relation("ExpectedIncomeReceive")
+  savingsSuggestions SavingsSuggestion[]      @relation("SavingsSuggestionIncome")
   // Relation 1-1 vers le DebtSettlement « avance » qui a créé cette
   // Transaction INCOME (étape 11) : le Settlement réduit la créance, la
   // Transaction porte le +compte — jamais les deux.
@@ -627,6 +647,38 @@ model SavingsContribution {
 
   @@index([savingsPlanId])
   @@map("savings_contributions")
+}
+
+/// PROPOSITION d'épargne liée à un revenu RÉEL reçu.
+///
+/// ⚠ RÈGLE ABSOLUE : une proposition n'est JAMAIS de l'argent. Elle ne crée
+/// AUCUN mouvement, AUCUN solde, AUCUNE Transaction. Elle mémorise seulement
+/// la décision humaine (PENDING / DISMISSED / CONFIRMED) pour qu'une même
+/// réception de revenu ne produise jamais plusieurs propositions (unique sur
+/// `incomeTransactionId`) et qu'un « Ignorer » persiste (reload/re-login/retry
+/// réseau ne réaffichent jamais une proposition ignorée).
+///
+/// Le Transfer de confirmation reste la SOURCE DE VÉRITÉ du mouvement : cette
+/// table ne duplique AUCUNE valeur monétaire. `sourceAccountId` n'est qu'un
+/// aide-mémoire de la source probable (allocation unique de la Transaction
+/// INCOME) — null = source inconnue/ambiguë → l'utilisateur choisit.
+model SavingsSuggestion {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  userId               String                   @db.Uuid
+  /// Transaction INCOME réelle qui a déclenché la proposition (1-1 : jamais
+  /// deux propositions pour le même revenu).
+  incomeTransactionId  String                   @unique @db.Uuid
+  status               SavingsSuggestionStatus  @default(PENDING)
+  sourceAccountId      String?                  @db.Uuid
+  createdAt            DateTime                 @default(now())
+  resolvedAt           DateTime?                @db.Timestamp(3)
+  user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  incomeTransaction    Transaction              @relation("SavingsSuggestionIncome", fields: [incomeTransactionId], references: [id], onDelete: Cascade)
+  sourceAccount        Account?                 @relation("SavingsSuggestionSource", fields: [sourceAccountId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, incomeTransactionId])
+  @@index([userId, status])
+  @@map("savings_suggestions")
 }
 
 /// Dette / créance (étape 11).

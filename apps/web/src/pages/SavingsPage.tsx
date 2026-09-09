@@ -10,15 +10,18 @@ import type {
   SavingsPlanMode,
   SavingsPlanPublic,
   SavingsProgressStatus,
+  SavingsWithdrawalCreate,
 } from '@finance/shared-types';
 import { useAuth } from '../auth/AuthContext';
 import {
   apiAddSavingsContribution,
   apiCreateSavingsPlan,
+  apiCreateTransfer,
   apiDeleteSavingsPlan,
   apiGetAccounts,
   apiGetSavingsMonth,
   apiUpdateSavingsPlan,
+  apiWithdrawFromSavings,
 } from '../auth/api';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { NotificationsBell } from '../components/NotificationsBell';
@@ -331,6 +334,222 @@ function PlanEditor({
               type="button"
               disabled={busy}
               onClick={() => onSubmit(draft)}
+              className={btn}
+            >
+              {busy ? 'Enregistrement…' : 'Confirmer'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(null);
+                setErrors([]);
+              }}
+              disabled={busy}
+              className={btnOut}
+            >
+              Modifier
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Retrait RÉEL : Épargne → compte destination (jamais plus que le solde). */
+function WithdrawalEditor({
+  accounts,
+  currency,
+  savingsBalance,
+  busy,
+  err,
+  onSubmit,
+  onCancel,
+}: {
+  accounts: AccountPublic[];
+  currency: Currency;
+  savingsBalance: string | null;
+  busy: boolean;
+  err: string | null;
+  onSubmit: (input: SavingsWithdrawalCreate) => void;
+  onCancel: () => void;
+}) {
+  const [destinationId, setDestinationId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [date, setDate] = useState('');
+  const [dateUnknown, setDateUnknown] = useState(false);
+  const [draft, setDraft] = useState<SavingsWithdrawalCreate | null>(null);
+  const [errors, setErrors] = useState<string[]>([]);
+
+  const destinations = accounts.filter((account) => account.type !== 'SAVINGS');
+  const destination = destinations.find((account) => account.id === destinationId) ?? null;
+  const exceeds =
+    savingsBalance !== null &&
+    amount.trim() !== '' &&
+    Number(amount) > Number(savingsBalance);
+
+  function verify(event: FormEvent) {
+    event.preventDefault();
+    const list: string[] = [];
+    if (!destinationId) list.push('Choisissez le compte de destination.');
+    if (!/^[1-9]\d*(\.\d{1,2})?$/.test(amount.trim())) {
+      list.push('Saisissez un montant strictement positif.');
+    }
+    if (date && dateUnknown) {
+      list.push('Choisissez une date OU « je ne sais plus », pas les deux.');
+    }
+    if (!date && !dateUnknown) {
+      list.push('Renseignez la date réelle ou cochez « je ne sais plus ».');
+    }
+    if (exceeds) {
+      list.push('Ce retrait dépasse le solde Épargne réellement disponible.');
+    }
+    if (list.length > 0) {
+      setErrors(list);
+      setDraft(null);
+      return;
+    }
+    setErrors([]);
+    setDraft({
+      destinationAccountId: destinationId,
+      amount: amount.trim(),
+      ...(dateUnknown ? { dateUnknown: true } : { occurredAt: date }),
+    });
+  }
+
+  return (
+    <section className={card}>
+      <h2 className="text-base font-semibold">Retirer de mon épargne</h2>
+      <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+        Enregistrez un retrait RÉEL : le montant est débité de votre Épargne et
+        crédité sur le compte choisi. Vous ne pouvez jamais retirer plus que le
+        solde Épargne disponible.
+      </p>
+
+      {!draft ? (
+        <form onSubmit={verify} className="mt-4 space-y-4">
+          <label className="block">
+            <span className="text-sm font-medium">Vers (compte de destination)</span>
+            <select
+              aria-label="Compte de destination"
+              value={destinationId}
+              onChange={(e) => setDestinationId(e.target.value)}
+              className={inputCls}
+            >
+              <option value="">— Choisir —</option>
+              {destinations.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {ACCOUNT_TYPE_LABELS[account.type]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-sm font-medium">Montant retiré</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              aria-label="Montant retiré de l'épargne"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
+              placeholder="40000"
+              className={inputCls}
+            />
+          </label>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium">Date réelle</span>
+              <input
+                type="date"
+                aria-label="Date réelle du retrait"
+                value={date}
+                disabled={dateUnknown}
+                onChange={(e) => setDate(e.target.value)}
+                className={inputCls}
+              />
+            </label>
+            <label className="flex items-end gap-2 text-sm">
+              <input
+                type="checkbox"
+                aria-label="Je ne sais plus (date)"
+                checked={dateUnknown}
+                onChange={(e) => {
+                  setDateUnknown(e.target.checked);
+                  if (e.target.checked) setDate('');
+                }}
+              />
+              Je ne sais plus
+            </label>
+          </div>
+
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            Solde Épargne disponible : {formatMoney(savingsBalance ?? '0', currency)}
+          </p>
+
+          {exceeds && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+              Ce retrait dépasse le solde Épargne réellement disponible.
+            </p>
+          )}
+
+          {errors.length > 0 && (
+            <ul className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+              {errors.map((message) => (
+                <li key={message}>{message}</li>
+              ))}
+            </ul>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" disabled={busy} className={btn}>
+              Vérifier
+            </button>
+            <button type="button" onClick={onCancel} disabled={busy} className={btnOut}>
+              Annuler
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900 dark:bg-indigo-950/30">
+          <h3 className="text-sm font-semibold text-indigo-800 dark:text-indigo-200">
+            Confirmer ce retrait ?
+          </h3>
+          <dl className="mt-3 space-y-1 text-sm">
+            <div className="flex justify-between gap-3">
+              <dt className="text-neutral-500 dark:text-neutral-400">Depuis</dt>
+              <dd className="font-medium">Épargne</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-neutral-500 dark:text-neutral-400">Vers</dt>
+              <dd className="font-medium">
+                {destination ? ACCOUNT_TYPE_LABELS[destination.type] : '—'}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-neutral-500 dark:text-neutral-400">Montant retiré</dt>
+              <dd className="tabular-nums font-semibold">
+                {formatMoney(draft.amount, currency)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-neutral-500 dark:text-neutral-400">Date</dt>
+              <dd>
+                {draft.dateUnknown ? 'Je ne sais plus' : (draft.occurredAt ?? '—')}
+              </dd>
+            </div>
+          </dl>
+
+          {err && (
+            <p className="mt-3 text-sm text-red-600 dark:text-red-400">{err}</p>
+          )}
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onSubmit(draft as SavingsWithdrawalCreate)}
               className={btn}
             >
               {busy ? 'Enregistrement…' : 'Confirmer'}
@@ -677,6 +896,7 @@ export default function SavingsPage() {
     initial: SavingsPlanPublic | null;
   } | null>(null);
   const [contribOpen, setContribOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [deleting, setDeleting] = useState<SavingsPlanPublic | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -734,6 +954,34 @@ export default function SavingsPage() {
     },
     onError: (e: Error) => setError(e.message),
   });
+  const addManual = useMutation({
+    mutationFn: (v: { input: SavingsContributionCreate; savingsId: string }) =>
+      apiCreateTransfer({
+        sourceAccountId: v.input.sourceAccountId,
+        destinationAccountId: v.savingsId,
+        amount: v.input.amount,
+        feeAmount: v.input.feeAmount ?? '0',
+        ...(v.input.dateUnknown
+          ? { dateUnknown: true }
+          : { occurredAt: v.input.occurredAt as string }),
+        description: v.input.description,
+      }),
+    onSuccess: () => {
+      setContribOpen(false);
+      setError(null);
+      refresh();
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+  const withdraw = useMutation({
+    mutationFn: (input: SavingsWithdrawalCreate) => apiWithdrawFromSavings(input),
+    onSuccess: () => {
+      setWithdrawOpen(false);
+      setError(null);
+      refresh();
+    },
+    onError: (e: Error) => setError(e.message),
+  });
 
   if (status === 'loading') {
     return (
@@ -752,7 +1000,12 @@ export default function SavingsPage() {
   const currency: Currency = view?.currency ?? 'MGA';
   const plan = view?.plan ?? null;
   const busy =
-    create.isPending || update.isPending || remove.isPending || contribute.isPending;
+    create.isPending ||
+    update.isPending ||
+    remove.isPending ||
+    contribute.isPending ||
+    addManual.isPending ||
+    withdraw.isPending;
 
   function handleSubmitPlan(input: SavingsPlanCreate) {
     if (planEditor?.initial) {
@@ -777,7 +1030,12 @@ export default function SavingsPage() {
           <button
             type="button"
             aria-label="Mois précédent"
-            onClick={() => setMonthKey((m) => shiftMonth(m, -1))}
+            onClick={() => {
+              setPlanEditor(null);
+              setContribOpen(false);
+              setWithdrawOpen(false);
+              setMonthKey((m) => shiftMonth(m, -1));
+            }}
             className="rounded-lg border border-neutral-300 px-3 py-2 text-lg leading-none text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
           >
             ‹
@@ -795,6 +1053,7 @@ export default function SavingsPage() {
                   setMonthKey(e.target.value);
                   setPlanEditor(null);
                   setContribOpen(false);
+                  setWithdrawOpen(false);
                 }
               }}
               className="bg-transparent text-sm outline-none"
@@ -803,7 +1062,12 @@ export default function SavingsPage() {
           <button
             type="button"
             aria-label="Mois suivant"
-            onClick={() => setMonthKey((m) => shiftMonth(m, 1))}
+            onClick={() => {
+              setPlanEditor(null);
+              setContribOpen(false);
+              setWithdrawOpen(false);
+              setMonthKey((m) => shiftMonth(m, 1));
+            }}
             className="rounded-lg border border-neutral-300 px-3 py-2 text-lg leading-none text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
           >
             ›
@@ -832,6 +1096,36 @@ export default function SavingsPage() {
                 Solde COURANT de votre compte Épargne (dérivé des transferts
                 réels). Il est distinct des contributions au plan du mois.
               </p>
+              {view.savingsAccount && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={busy || contribOpen || withdrawOpen}
+                    className={btn}
+                    onClick={() => {
+                      setError(null);
+                      setPlanEditor(null);
+                      setWithdrawOpen(false);
+                      setContribOpen(true);
+                    }}
+                  >
+                    Ajouter à mon épargne
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || contribOpen || withdrawOpen}
+                    className={btnOut}
+                    onClick={() => {
+                      setError(null);
+                      setPlanEditor(null);
+                      setContribOpen(false);
+                      setWithdrawOpen(true);
+                    }}
+                  >
+                    Retirer de mon épargne
+                  </button>
+                </div>
+              )}
             </section>
 
             {!plan && !planEditor && (
@@ -849,6 +1143,7 @@ export default function SavingsPage() {
                   onClick={() => {
                     setError(null);
                     setContribOpen(false);
+                    setWithdrawOpen(false);
                     setPlanEditor({ initial: null });
                   }}
                 >
@@ -912,6 +1207,7 @@ export default function SavingsPage() {
                     onClick={() => {
                       setError(null);
                       setPlanEditor(null);
+                      setWithdrawOpen(false);
                       setContribOpen(true);
                     }}
                   >
@@ -957,17 +1253,39 @@ export default function SavingsPage() {
               />
             )}
 
-            {contribOpen && plan && (
+            {contribOpen && view?.savingsAccount && (
               <ContributionEditor
                 accounts={sourceAccounts}
                 currency={currency}
                 busy={busy}
                 err={error}
-                onSubmit={(input) =>
-                  contribute.mutate({ planId: plan.id, input })
-                }
+                onSubmit={(input) => {
+                  if (plan) {
+                    contribute.mutate({ planId: plan.id, input });
+                  } else {
+                    addManual.mutate({
+                      input,
+                      savingsId: view.savingsAccount!.id,
+                    });
+                  }
+                }}
                 onCancel={() => {
                   setContribOpen(false);
+                  setError(null);
+                }}
+              />
+            )}
+
+            {withdrawOpen && view?.savingsAccount && (
+              <WithdrawalEditor
+                accounts={accounts}
+                currency={currency}
+                savingsBalance={view.savingsAccount.balance}
+                busy={busy}
+                err={error}
+                onSubmit={(input) => withdraw.mutate(input)}
+                onCancel={() => {
+                  setWithdrawOpen(false);
                   setError(null);
                 }}
               />

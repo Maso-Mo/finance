@@ -153,3 +153,86 @@ describe('Extraction PDF locale', () => {
     );
   });
 });
+
+describe('Ingestion relevés — déduplication visible AVANT import', () => {
+  it('7. nouveau fichier = anciennes lignes + nouvelle : preview les signale', async () => {
+    const mixed = [
+      'date;description;debit;credit',
+      '01/09/2026;Retrait distributeur;20000.00;', // déjà importée par tokenA (test 3)
+      '02/09/2026;Nouvelle depense;5000.00;', // nouvelle
+      '01/09/2026;Virement salaire;;1500000.00', // déjà importée par tokenA (test 3)
+    ].join('\n');
+
+    const preview = await postPreview(tokenA, { text: mixed });
+    expect(preview.status).toBe(200);
+    expect(preview.body.rows).toHaveLength(3);
+    expect(preview.body.rows[0]).toMatchObject({
+      line: 2,
+      alreadyImported: true,
+    });
+    expect(preview.body.rows[1]).toMatchObject({
+      line: 3,
+      alreadyImported: false,
+    });
+    expect(preview.body.rows[2]).toMatchObject({
+      line: 4,
+      alreadyImported: true,
+    });
+
+    // Import de la SEULE nouvelle ligne : pas de doublon, 2 ignorées.
+    const imported = await postImport(tokenA, { text: mixed, rowIndices: [3] });
+    expect(imported.status).toBe(201);
+    expect(imported.body.imported).toHaveLength(1);
+    expect(imported.body.skippedDuplicates).toBe(0);
+  });
+
+  it('8. extract PDF (HTTP) → texte → preview → import complet', async () => {
+    const content = [
+      '(date;description;debit;credit) Tj',
+      'T* (04/09/2026;Marche Alakamisy;4500.00;) Tj',
+      'T* (05/09/2026;Vente zebu;;850000.00) Tj',
+    ].join('\n');
+    const stream = deflateSync(Buffer.from(content, 'latin1'));
+    const pdf = Buffer.concat([
+      Buffer.from(
+        `%PDF-1.4\n1 0 obj << /Length ${stream.length} /Filter /FlateDecode >> stream\n`,
+        'latin1',
+      ),
+      stream,
+      Buffer.from('\nendstream\nendobj\n%%EOF', 'latin1'),
+    ]);
+
+    const extract = await request(app)
+      .post('/ingestion/bank-statements/extract')
+      .set(auth(tokenB))
+      .set('content-type', 'application/pdf')
+      .send(pdf);
+    expect(extract.status).toBe(200);
+    expect(extract.body.text).toContain('Marche Alakamisy');
+    expect(extract.body.text).toContain('Vente zebu');
+
+    const preview = await postPreview(tokenB, { text: extract.body.text });
+    expect(preview.status).toBe(200);
+    expect(preview.body.rows).toHaveLength(2);
+    expect(preview.body.rows[0]).toMatchObject({ line: 2, kind: 'EXPENSE' });
+    expect(preview.body.rows[1]).toMatchObject({ line: 3, kind: 'INCOME' });
+
+    const imported = await postImport(tokenB, {
+      text: extract.body.text,
+      rowIndices: [2, 3],
+    });
+    expect(imported.status).toBe(201);
+    expect(imported.body.imported).toHaveLength(2);
+    expect(imported.body.skippedDuplicates).toBe(0);
+  });
+
+  it('9. corps non-PDF sur /extract → refus explicite (jamais deviné)', async () => {
+    const res = await request(app)
+      .post('/ingestion/bank-statements/extract')
+      .set(auth(tokenB))
+      .set('content-type', 'application/pdf')
+      .send(Buffer.from('ceci est du texte brut', 'latin1'));
+    expect(res.status).toBe(400);
+  });
+});
+

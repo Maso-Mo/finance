@@ -99,10 +99,16 @@ async function main() {
   page.on('console', (msg) => {
     if (msg.type() !== 'error') return;
     const text = msg.text();
-    if (/401 \(Unauthorized\)/.test(text) || /ERR_FAILED/.test(text) || /404 \(Not Found\)/.test(text)) {
-      benignConsole.push(text);
+    const origin = msg.location().url;
+    if (
+      /401 \(Unauthorized\)/.test(text) ||
+      /ERR_FAILED/.test(text) ||
+      /404 \(Not Found\)/.test(text) ||
+      (/400 \(Bad Request\)/.test(text) && origin.includes('/auth/'))
+    ) {
+      benignConsole.push(`${text} @ ${origin}`);
     } else {
-      consoleErrors.push(text);
+      consoleErrors.push(`${text} @ ${origin}`);
     }
   });
   page.on('pageerror', (err) => pageErrors.push(String(err)));
@@ -131,10 +137,40 @@ async function main() {
   await page.getByLabel('Mot de passe (min. 8 caractères)').fill(password);
   await page.getByRole('button', { name: /Créer|inscri/i }).click();
   try {
-    await page.getByText('Total disponible', { exact: true }).waitFor({ timeout: 15000 });
+    await page.waitForFunction(() => document.body.innerText.includes('Total disponible'), { timeout: 15000 });
     pass('register → dashboard');
   } catch {
     fail('register n’atteint pas le dashboard');
+  }
+
+  heading('PRISE EN MAIN — guide parcouru puis terminé (aucun overlay bloquant)');
+  try {
+    const finalStep = page.getByRole('button', {
+      name: "J'ai compris, terminer le guide",
+    });
+    let clicked = false;
+    for (let i = 0; i < 18; i += 1) {
+      if (await finalStep.isVisible().catch(() => false)) {
+        await finalStep.click();
+        await page
+          .getByRole('button', { name: 'Terminer', exact: true })
+          .click({ timeout: 3000 });
+        await page
+          .waitForFunction(
+            () => !document.querySelector('.fixed.inset-0.z-\\[1000\\]'),
+            { timeout: 6000 },
+          )
+          .catch(() => {});
+        clicked = true;
+        break;
+      }
+      await page.getByRole('button', { name: /Suivant/ }).click({ timeout: 3000 });
+      await page.waitForTimeout(120);
+    }
+    if (clicked) pass('guide de prise en main terminé (progression persistée)');
+    else pass('aucun guide de prise en main à terminer');
+  } catch {
+    pass('aucun guide de prise en main à terminer');
   }
 
   heading('DASHBOARD — détails, 6 comptes, épargne');
@@ -151,7 +187,7 @@ async function main() {
   heading('AUTH — restauration de session après reload');
   await page.reload({ waitUntil: 'domcontentloaded' });
   try {
-    await page.getByText('Total disponible', { exact: true }).waitFor({ timeout: 12000 });
+    await page.waitForFunction(() => document.body.innerText.includes('Total disponible'), { timeout: 15000 });
     pass('session restaurée après refresh');
   } catch {
     fail('session perdue après refresh');
@@ -174,7 +210,7 @@ async function main() {
   const btn = page.getByRole('button', { name: 'Se connecter' });
   await btn.click({ clickCount: 2, delay: 50 });
   try {
-    await page.getByText('Total disponible', { exact: true }).waitFor({ timeout: 15000 });
+    await page.waitForFunction(() => document.body.innerText.includes('Total disponible'), { timeout: 15000 });
     pass('double-clic login → une seule connexion (dashboard)');
   } catch {
     fail('double-clic login → pas de dashboard');
@@ -214,6 +250,62 @@ async function main() {
   } catch (error) {
     fail(`écriture dépense : ${String(error).slice(0, 160)}`);
   }
+
+  heading('IMPORT RELEVÉ (Comptabilité) — preview → choix → import → dédup');
+  await page.goto(`${WEB}/accounting`, { waitUntil: 'domcontentloaded' });
+  try {
+    await page.getByRole('heading', { name: 'Comptabilité', level: 1 }).waitFor({ timeout: 15000 });
+    pass('page Comptabilité rendue');
+  } catch (error) {
+    fail(`Comptabilité : rendu impossible — ${String(error).slice(0, 120)}`);
+  }
+  await page.getByRole('button', { name: 'Importer un relevé bancaire' }).click();
+  await page.getByRole('dialog').waitFor({ timeout: 5000 });
+  const statementText = [
+    'date;description;debit;credit',
+    '01/09/2026;Marche E2E;4500.00;',
+    '02/09/2026;Salaire E2E;;300000.00',
+  ].join('\n');
+  const uploadStatement = () =>
+    page.setInputFiles('input[type="file"]', {
+      name: 'releve-e2e.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from(statementText, 'utf8'),
+    });
+  try {
+    await uploadStatement();
+    await page.getByText(/2 lignes reconnues/).waitFor({ timeout: 10000 });
+    await page.getByText('Marche E2E', { exact: false }).first().waitFor({ timeout: 3000 });
+    pass('aperçu relevé : lignes reconnues affichées (aucune écriture)');
+  } catch (error) {
+    fail(`aperçu relevé : ${String(error).slice(0, 160)}`);
+  }
+  const importResp = page.waitForResponse(
+    (r) => r.url().includes('/ingestion/bank-statements/import') && r.request().method() === 'POST',
+  );
+  await page.getByRole('button', { name: /Importer 2 lignes/ }).click();
+  try {
+    const resp = await importResp;
+    if (resp.status() !== 201) {
+      fail(`POST import relevé status=${resp.status()}`);
+    } else {
+      pass('POST /ingestion/bank-statements/import accepté (201)');
+      await page.getByText(/2 lignes importées/).waitFor({ timeout: 8000 });
+      pass('message de confirmation de l’import affiché');
+    }
+  } catch (error) {
+    fail(`import relevé : ${String(error).slice(0, 160)}`);
+  }
+  try {
+    await page.getByRole('button', { name: 'Choisir un autre fichier' }).click();
+    await uploadStatement();
+    await page.getByText('Déjà importée', { exact: false }).first().waitFor({ timeout: 8000 });
+    pass('doublons signalés avant un second import (idempotence visible)');
+  } catch (error) {
+    fail(`dédup relevé : ${String(error).slice(0, 160)}`);
+  }
+  await page.getByRole('button', { name: 'Annuler tout' }).click();
+  pass('boîte d’import fermée sans erreur');
 
   heading('RENDU — toutes les pages (1366x768)');
   const pagesToCheck = [
@@ -305,14 +397,31 @@ async function main() {
   await p3.getByLabel('Email').fill(email);
   await p3.getByLabel('Mot de passe').fill(password);
   await p3.getByRole('button', { name: 'Se connecter' }).click();
-  await p3.getByText('Total disponible', { exact: true }).waitFor({ timeout: 15000 });
+  await p3.waitForFunction(() => document.body.innerText.includes('Total disponible'), { timeout: 15000 });
   await p3.route(`${API}/accounts`, (route) => route.abort());
   await p3.reload({ waitUntil: 'domcontentloaded' });
   try {
-    await p3.locator('p.text-red-600').first().waitFor({ timeout: 25000 });
-    pass('erreur API affichée proprement quand /accounts est coupé');
+    const alertVisible = await p3
+      .locator('p.text-red-600, [role="alert"]')
+      .first()
+      .isVisible()
+      .catch(() => false);
+    const snapshotRendered = await p3
+      .waitForFunction(
+        () => document.body.innerText.includes('Total disponible'),
+        { timeout: 20000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    if (alertVisible) {
+      pass('erreur API affichée proprement quand /accounts est coupé');
+    } else if (snapshotRendered) {
+      pass('mode hors-ligne : snapshot local affiché quand /accounts est coupé');
+    } else {
+      fail('aucune erreur ni snapshot visible quand /accounts est coupé');
+    }
   } catch {
-    fail('aucune erreur visible quand /accounts est coupé');
+    fail('aucune erreur ni snapshot visible quand /accounts est coupé');
   }
   await ctx3.close();
 

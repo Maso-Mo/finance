@@ -13,6 +13,10 @@ import {
   apiGetNotifications,
   apiGetOnboarding,
   apiCompleteOnboarding,
+  apiGetAccounts,
+  apiGetNextSavingsSuggestion,
+  apiDismissSavingsSuggestion,
+  apiConfirmSavingsSuggestion,
 } from '../auth/api';
 
 vi.mock('../auth/api', () => ({
@@ -24,6 +28,11 @@ vi.mock('../auth/api', () => ({
   apiGetNotifications: vi.fn(),
   apiGetOnboarding: vi.fn(),
   apiCompleteOnboarding: vi.fn(),
+  apiGetAccounts: vi.fn(),
+  apiGetNextSavingsSuggestion: vi.fn(),
+  apiDismissSavingsSuggestion: vi.fn(),
+  apiConfirmSavingsSuggestion: vi.fn(),
+  INCOME_RECORDED_EVENT: 'finance:income-recorded',
 }));
 
 const USER = {
@@ -75,6 +84,12 @@ beforeEach(() => {
   });
   vi.mocked(apiGetOnboarding).mockResolvedValue({ completed: true });
   vi.mocked(apiCompleteOnboarding).mockResolvedValue({ completed: true });
+  vi.mocked(apiGetAccounts).mockResolvedValue({
+    accounts: [],
+    currency: 'MGA',
+    totalAvailable: '0',
+  });
+  vi.mocked(apiGetNextSavingsSuggestion).mockResolvedValue({ suggestion: null });
 });
 
 describe('Chrome — ancres de la prise en main guidée', () => {

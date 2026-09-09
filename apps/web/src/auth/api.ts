@@ -57,6 +57,12 @@ import type {
   SavingsPlanCreate,
   SavingsPlanMutationResponse,
   SavingsPlanUpdate,
+  SavingsSuggestionConfirm,
+  SavingsSuggestionConfirmResponse,
+  SavingsSuggestionNextResponse,
+  SavingsSuggestionPublic,
+  SavingsWithdrawalCreate,
+  SavingsWithdrawalMutationResponse,
   TransactionMutationResponse,
   TransactionsResponse,
   TransactionUpsert,
@@ -68,6 +74,12 @@ import type {
   AssistantMessageResponse,
   AssistantProposalPublic,
   AssistantProposalConfirmResponse,
+  StatementExtractResponse,
+  StatementImportRequest,
+  StatementImportResult,
+  StatementPreviewRequest,
+  StatementPreviewResponse,
+  StatementProviderHint,
 } from '@finance/shared-types';
 
 /**
@@ -257,10 +269,14 @@ export async function apiGetTransactions(
 export async function apiCreateTransaction(
   input: TransactionUpsert,
 ): Promise<TransactionMutationResponse> {
-  return request<TransactionMutationResponse>('/transactions', {
+  const result = await request<TransactionMutationResponse>('/transactions', {
     method: 'POST',
     body: input,
   });
+  if (input.type === 'INCOME') {
+    emitIncomeRecorded();
+  }
+  return result;
 }
 
 /** Modifie une transaction (remplacement atomique complet). */
@@ -428,10 +444,12 @@ export async function apiConfirmExpectedIncomeReceived(
   expectedIncomeId: string,
   input: ExpectedIncomeConfirmReceived,
 ): Promise<ExpectedIncomeConfirmReceivedResponse> {
-  return request<ExpectedIncomeConfirmReceivedResponse>(
+  const result = await request<ExpectedIncomeConfirmReceivedResponse>(
     `/expected-incomes/${expectedIncomeId}/confirm-received`,
     { method: 'POST', body: input },
   );
+  emitIncomeRecorded();
+  return result;
 }
 
 /** Rappels « Reçu ? » (read-only) : today = jour local (YYYY-MM-DD). */
@@ -587,6 +605,131 @@ export async function apiAddSavingsContribution(
     { method: 'POST', body: input },
   );
 }
+
+/**
+ * Événement navigateur : un revenu RÉEL vient d'être enregistré. Le composant
+ * global de proposition d'épargne s'y abonne pour interroger /next sans
+ * dupliquer de proposition (idempotence serveur par Transaction INCOME).
+ */
+export const INCOME_RECORDED_EVENT = 'finance:income-recorded';
+
+function emitIncomeRecorded(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(INCOME_RECORDED_EVENT));
+  }
+}
+
+// --- Propositions d'épargne post-revenu RÉEL (étape 10) ---
+
+/**
+ * Prochaine proposition PENDING (la plus ancienne), read-only côté serveur.
+ * Reload / re-login / retry réseau ne créent JAMAIS de proposition dupliquée.
+ */
+export async function apiGetNextSavingsSuggestion(): Promise<SavingsSuggestionNextResponse> {
+  return request<SavingsSuggestionNextResponse>('/savings/suggestions/next');
+}
+
+/** « Ignorer » : la décision persiste (reload / re-login / retry). */
+export async function apiDismissSavingsSuggestion(
+  suggestionId: string,
+): Promise<SavingsSuggestionPublic> {
+  return request<SavingsSuggestionPublic>(
+    `/savings/suggestions/${suggestionId}/dismiss`,
+    { method: 'POST' },
+  );
+}
+
+/**
+ * Confirme un montant : le serveur crée EXACTEMENT UN AccountTransfer
+ * source → SAVINGS (jamais de Transaction EXPENSE/INCOME parallèle).
+ */
+export async function apiConfirmSavingsSuggestion(
+  suggestionId: string,
+  input: SavingsSuggestionConfirm,
+): Promise<SavingsSuggestionConfirmResponse> {
+  return request<SavingsSuggestionConfirmResponse>(
+    `/savings/suggestions/${suggestionId}/confirm`,
+    { method: 'POST', body: input },
+  );
+}
+
+/** Retrait RÉEL de l'Épargne (jamais au-delà du solde disponible). */
+export async function apiWithdrawFromSavings(
+  input: SavingsWithdrawalCreate,
+): Promise<SavingsWithdrawalMutationResponse> {
+  return request<SavingsWithdrawalMutationResponse>('/savings/withdrawals', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+// --- Ingestion LOCALE de relevés (Comptabilité) : extraction → aperçu → import ---
+
+/** Extraction de TEXTE d'un PDF (corps brut), 100 % locale côté API. */
+export async function apiExtractStatementPdf(
+  pdf: ArrayBuffer,
+): Promise<StatementExtractResponse> {
+  if (isUnavailable() || !accessToken) {
+    throw new ApiError(0, 'Cette action nécessite une connexion à Finance.');
+  }
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/ingestion/bank-statements/extract`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/pdf',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: pdf,
+    });
+  } catch {
+    setUnavailable(true);
+    throw new ApiError(0, 'Cette action nécessite une connexion à Finance.');
+  }
+  if (res.status >= 502) {
+    setUnavailable(true);
+    throw new ApiError(0, 'Cette action nécessite une connexion à Finance.');
+  }
+  setUnavailable(false);
+  let body: { text?: string; error?: string } | null = null;
+  try {
+    body = await res.json();
+  } catch {
+    // corps non JSON : traité comme une erreur générique ci-dessous.
+  }
+  if (!res.ok || !body || typeof body.text !== 'string') {
+    throw new ApiError(
+      res.status,
+      body?.error ?? 'Extraction impossible : fichier non reconnu.',
+    );
+  }
+  return body as StatementExtractResponse;
+}
+
+/** Aperçu read-only du texte d'un relevé (aucune écriture, aucune devinette). */
+export async function apiPreviewStatement(
+  input: StatementPreviewRequest,
+): Promise<StatementPreviewResponse> {
+  return request<StatementPreviewResponse>('/ingestion/bank-statements/preview', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+/**
+ * Importe UNIQUEMENT les lignes confirmées (indices vus en aperçu). Le serveur
+ * re-parse le texte d'origine : un montant/type arbitraire est impossible.
+ */
+export async function apiImportStatement(
+  input: StatementImportRequest,
+): Promise<StatementImportResult> {
+  return request<StatementImportResult>('/ingestion/bank-statements/import', {
+    method: 'POST',
+    body: input,
+  });
+}
+
 
 // --- Dettes et créances (étape 11) ---
 

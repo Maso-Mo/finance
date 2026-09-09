@@ -2,6 +2,7 @@ import { prisma } from '../db.js';
 import { ApiError } from '../http-error.js';
 import { allocationsMatchTotal } from '@finance/finance-core';
 import { assertSystemCategory } from '../categories/categories.service.js';
+import { queueSavingsSuggestion } from '../savings/savings-flows.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type {
   AccountType,
@@ -204,6 +205,7 @@ export async function createTransactionRecord(
   tx: Prisma.TransactionClient,
   userId: string,
   input: TransactionUpsert,
+  options?: { skipSavingsSuggestion?: boolean },
 ): Promise<TransactionPublic> {
   await validateTransactionInput(userId, input);
   const allocations = input.allocations ?? [];
@@ -223,6 +225,23 @@ export async function createTransactionRecord(
     },
     include: includeLedger,
   });
+
+  // Étape 10 — PROPOSITION d'épargne post-revenu RÉEL : une vraie Transaction
+  // INCOME (reçue, jamais future/PENDING/UNCERTAIN, jamais un transfert) crée
+  // UNE proposition PENDING idempotente (contrainte unique en base), dans la
+  // MÊME transaction Prisma. Exclu : les règlements de dette « avance » qui
+  // portent leur +compte via une Transaction INCOME (la source n'est pas un
+  // revenu à épargner) — option skipSavingsSuggestion positionnée par dettes.
+  if (input.type === 'INCOME' && options?.skipSavingsSuggestion !== true) {
+    const known = input.accountUnknown !== true && allocations.length === 1;
+    await queueSavingsSuggestion(
+      tx,
+      userId,
+      row.id,
+      known ? allocations[0]!.accountId : null,
+    );
+  }
+
   return toPublicTransaction(row);
 }
 
@@ -371,6 +390,15 @@ export async function deleteTransaction(
         status: 'RECEIVED',
       },
       data: { status: 'PENDING', receivedTransactionId: null },
+    });
+    // Propositions d'épargne encore ouvertes pour CE revenu : supprimées avec
+    // la suppression du revenu (le revenu n'a jamais été reçu). Une proposition
+    // déjà CONFIRMED reste en audit : son AccountTransfer réel n'est pas annulé.
+    await tx.savingsSuggestion.deleteMany({
+      where: {
+        incomeTransactionId: transactionId,
+        status: { not: 'CONFIRMED' },
+      },
     });
   });
 }

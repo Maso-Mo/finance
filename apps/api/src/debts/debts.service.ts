@@ -538,6 +538,10 @@ export async function createSettlement(
         tx,
         userId,
         advanceTransactionInput(input),
+        // Règlement « avance » : ce +compte n'est PAS un revenu nouveau à
+        // épargner (remboursement d'une créance déjà comptée). Aucune
+        // proposition d'épargne ne doit être créée pour cette Transaction.
+        { skipSavingsSuggestion: true },
       );
       await tx.debtSettlement.update({
         where: { id: created.id },

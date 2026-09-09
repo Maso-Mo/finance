@@ -26,3 +26,4 @@ export * from './analytics.js';
 
 export * from './accounting.js';
 export * from './ingestion.js';
+export * from './savings-suggestion.js';

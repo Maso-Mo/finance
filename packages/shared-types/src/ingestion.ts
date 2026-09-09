@@ -54,6 +54,8 @@ export const statementRowCandidateSchema = z.object({
   date: dateOnlySchema.nullable(),
   description: z.string().nullable(),
   raw: z.string(),
+  /** true si une Transaction identique existe déjà (déduplication visible AVANT import). */
+  alreadyImported: z.boolean(),
 });
 export type StatementRowCandidate = z.infer<typeof statementRowCandidateSchema>;
 
@@ -88,6 +90,14 @@ export const statementImportRequestSchema = z.object({
     .max(500, 'At most 500 rows per import.'),
 });
 export type StatementImportRequest = z.infer<typeof statementImportRequestSchema>;
+
+/** Texte extrait localement d'un PDF (réponse de /extract). */
+export const statementExtractResponseSchema = z.object({
+  text: z.string(),
+});
+export type StatementExtractResponse = z.infer<
+  typeof statementExtractResponseSchema
+>;
 
 export const statementImportResultSchema = z.object({
   /** Ligne importée, avec sa ligne d'origine et sa Transaction créée. */
