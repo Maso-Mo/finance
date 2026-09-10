@@ -165,7 +165,7 @@ app.use('/notification-preferences', requireAuth, notificationPreferencesRouter)
 app.use('/push-subscriptions', requireAuth, pushSubscriptionsRouter);
 
 // Statut de l'assistant IA : PUBLIC, aucune donnée sensible ni secret. Mode
-// dégradé documenté : sans configuration AI_* → { available: false }.
+// dégradé documenté : sans configuration GROQ_*/AI_* → { available: false }.
 app.get('/assistant/status', async (_req, res) => {
   res.json(await assistantStatus());
 });

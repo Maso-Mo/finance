@@ -205,20 +205,27 @@ pnpm --filter @finance/api exec web-push generate-vapid-keys
 Règles de sécurité : la clé PRIVÉE ne quitte jamais le serveur ; le Service
 Worker ne fait aucune écriture ; le clic d'une notification ne fait que naviguer.
 
-## Assistant IA (étape 13) — optionnel
+## Assistant IA (étape 13) — optionnel (fournisseur Groq)
 
-Sans configuration (`AI_BASE_URL`/`AI_API_KEY`/`AI_MODEL` absents), mode dégradé
-propre. Fournisseur compatible OpenAI :
+Sans configuration (`GROQ_API_KEY`/`GROQ_MODEL` absents), mode dégradé propre :
+`GET /assistant/status` → `{ available: false }` et le reste de l'API fonctionne.
+Groq est branché **uniquement côté API** (le web ne possède jamais la clé) via
+une abstraction `AssistantProvider` (transport HTTP OpenAI-compatible, aucun SDK) :
 
 ```bash
-AI_BASE_URL=https://api.openai.com/v1
-AI_API_KEY=…            # jamais commitée
-AI_MODEL=…
-AI_TIMEOUT_MS=30000     # défaut
+GROQ_API_KEY=…                       # jamais commitée
+GROQ_MODEL=…                         # ex. llama-3.3-70b-versatile
+GROQ_BASE_URL=https://api.groq.com/openai/v1   # défaut si absent
+GROQ_TIMEOUT_MS=30000                # défaut
 ```
+
+Un endpoint OpenAI-compatible hérité (modèle local LAN futur) reste
+configurable via `AI_BASE_URL`/`AI_API_KEY`/`AI_MODEL` sans toucher au métier.
 L'assistant ne produit **jamais** d'écriture : uniquement des propositions
 (`AssistantActionProposal`) qui ne sont exécutées qu'après confirmation
 explicite de l'utilisateur (réexécution déterministe côté services métier).
+Test réel optionnel (jamais exécuté automatiquement) :
+`pnpm --filter @finance/api assistant:smoke` (ne tourne que si `GROQ_API_KEY`).
 
 ## Dataset de performance (benchmark)
 

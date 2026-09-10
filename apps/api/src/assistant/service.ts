@@ -11,7 +11,7 @@ import type {
 import {
   assistantEngineTurnSchema,
 } from '@finance/shared-types';
-import { assistantConfig, assistantProviderName } from './config.js';
+import { assistantConfig } from './config.js';
 import { ApiError } from '../http-error.js';
 import { prisma } from '../db.js';
 import { tools, listCategoryRefs, type ToolContext } from './tools.js';
@@ -641,9 +641,24 @@ export async function assistantMessage(
     }
   } catch (error) {
     if (error instanceof ProviderError) {
+      // Log technique minimal : jamais de message/contexte, aucun secret.
+      console.warn('[assistant] provider error', {
+        requestId,
+        provider: provider.name,
+        errorClass: error.name,
+        durationMs: Date.now() - startedAt,
+      });
       throw new ApiError(502, 'Le service IA est momentanément indisponible. Réessaie dans un instant.');
     }
     if (error instanceof AssistantParseError) {
+      // Réponse fournisseur non exploitable (JSON invalide, schéma Zod) :
+      // aucune écriture, message contrôlé. Log technique minimal uniquement.
+      console.warn('[assistant] engine parse error', {
+        requestId,
+        provider: provider.name,
+        errorClass: error.name,
+        durationMs: Date.now() - startedAt,
+      });
       throw new ApiError(
         422,
         'Je n’ai pas réussi à comprendre cette demande de façon suffisamment sûre. Reformule-la.',

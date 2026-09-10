@@ -106,8 +106,10 @@ function cancelProposalReq(token: string, id: string) {
 }
 
 function expectNoSecrets(body: unknown): void {
-  expect(JSON.stringify(body)).not.toContain('passwordHash');
-  expect(JSON.stringify(body)).not.toContain('AI_API_KEY');
+  const serialized = JSON.stringify(body);
+  expect(serialized).not.toContain('passwordHash');
+  expect(serialized).not.toContain('AI_API_KEY');
+  expect(serialized).not.toContain('GROQ_API_KEY');
 }
 
 beforeAll(async () => {

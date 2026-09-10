@@ -105,6 +105,21 @@ describe('AssistantPage — statut et mode dégradé', () => {
     expect(screen.getAllByText(/lecture seule/).length).toBeGreaterThan(0);
   });
 
+  it('affiche la mention de confidentialité (service IA en ligne, jamais SMS/relevés bruts)', async () => {
+    renderPage();
+    await waitPage();
+    expect(
+      await screen.findByText(
+        /Seules les informations nécessaires à ta demande lui sont transmises/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText(
+        /Les SMS et relevés bancaires bruts ne sont jamais envoyés/,
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
   it('mode dégradé : pas de saisie quand le serveur n’a pas de fournisseur IA', async () => {
     vi.mocked(apiGetAssistantStatus).mockResolvedValue({
       ...STATUS,

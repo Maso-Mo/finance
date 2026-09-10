@@ -1,22 +1,34 @@
 import { assistantConfig, isAssistantConfigured } from './config.js';
 
 /**
- * Abstraction PROVIDER IA (étape 13) — découplée du métier.
+ * PROVIDER IA (étape 13) — abstraction découplée du métier Finance.
  *
- * Une API « compatible OpenAI » (POST /chat/completions) est le format
- * cible : le fournisseur est configurable via AI_BASE_URL / AI_API_KEY /
- * AI_MODEL sans modifier le métier. Aucun SDK lourd : fetch + timeout.
+ * Le métier ne connaît QUE cette interface (AssistantProvider). Groq est
+ * simplement un ADAPTER au-dessus d'un transport HTTP « compatible OpenAI »
+ * (POST /chat/completions) ; un modèle local LAN ou un autre endpoint
+ * compatible s'ajoutera via le même `createProvider` sans réécrire Finance.
  *
  * Sécurité :
  *  - la clé n'est JAMAIS renvoyée au frontend ni loggée ;
  *  - timeout raisonnable + UNE seule retry technique (réseau), jamais de
- *    boucle infinie ; une panne fournisseur ne modifie aucune donnée.
+ *    boucle infinie ; une panne fournisseur ne modifie aucune donnée ;
+ *  - aucun SDK lourd : fetch + AbortController.
  */
 
 export type ChatRole = 'system' | 'user' | 'assistant';
 export interface ChatMessage {
   role: ChatRole;
   content: string;
+}
+
+/** Réglages techniques d'un fournisseur (résolus par la config, testables). */
+export interface ProviderSettings {
+  /** Nom technique exposé publiquement (ex. 'groq', 'openai-compatible'). */
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  timeoutMs: number;
 }
 
 export interface AssistantProvider {
@@ -72,9 +84,9 @@ async function postOnce(
       signal: controller.signal,
     });
     if (!res.ok) {
-      const status = res.status;
-      // Ne jamais logguer le corps complet (peut contenir des données).
-      throw new ProviderError(`Provider responded with HTTP ${status}.`);
+      // Rate limit fournisseur (429) et autres erreurs HTTP : jamais le corps
+      // complet (peut contenir des données) ; pas de retry sur erreur HTTP.
+      throw new ProviderError(`Provider responded with HTTP ${res.status}.`);
     }
     const body = (await res.json()) as ChatCompletionResponse;
     const content = body.choices?.[0]?.message?.content?.trim();
@@ -95,20 +107,24 @@ async function postOnce(
   }
 }
 
-/** Fournisseur compatible OpenAI, configuré via l'environnement. */
-export function createOpenAICompatibleProvider(): AssistantProvider {
+/**
+ * Construit un fournisseur compatible OpenAI à partir de réglages explicites.
+ * `name` distingue l'adapter (groq, endpoint LAN futur, …) — le transport
+ * HTTP, le timeout et la retry unique restent partagés.
+ */
+export function createProvider(settings: ProviderSettings): AssistantProvider {
+  const url = buildUrl(settings.baseUrl);
   return {
-    name: 'openai-compatible',
-    model: assistantConfig.model,
+    name: settings.name,
+    model: settings.model,
     async complete(messages) {
-      const url = buildUrl(assistantConfig.baseUrl);
       try {
         return await postOnce(
           url,
-          assistantConfig.apiKey,
-          assistantConfig.model,
+          settings.apiKey,
+          settings.model,
           messages,
-          assistantConfig.timeoutMs,
+          settings.timeoutMs,
         );
       } catch (error) {
         // UNE retry technique (panne réseau transitoire) — jamais plus.
@@ -118,10 +134,10 @@ export function createOpenAICompatibleProvider(): AssistantProvider {
         ) {
           return postOnce(
             url,
-            assistantConfig.apiKey,
-            assistantConfig.model,
+            settings.apiKey,
+            settings.model,
             messages,
-            assistantConfig.timeoutMs,
+            settings.timeoutMs,
           );
         }
         throw error;
@@ -130,10 +146,43 @@ export function createOpenAICompatibleProvider(): AssistantProvider {
   };
 }
 
+/** Adapter Groq (endpoint OpenAI-compatible par défaut, modèle configurable). */
+export function createGroqProvider(
+  settings: Omit<ProviderSettings, 'name'>,
+): AssistantProvider {
+  return createProvider({
+    ...settings,
+    name: 'groq',
+    baseUrl:
+      settings.baseUrl || 'https://api.groq.com/openai/v1',
+  });
+}
+
+/** Adapter générique « OpenAI-compatible » (endpoint quelconque, futur LAN). */
+export function createOpenAICompatibleProvider(
+  settings: Omit<ProviderSettings, 'name'>,
+): AssistantProvider {
+  return createProvider({
+    ...settings,
+    name: 'openai-compatible',
+  });
+}
+
 /** Provider actif ou null si l'assistant n'est pas configuré (mode dégradé). */
 export function createConfiguredProvider(): AssistantProvider | null {
   if (!isAssistantConfigured()) {
     return null;
   }
-  return createOpenAICompatibleProvider();
+  const settings = {
+    baseUrl: assistantConfig.baseUrl,
+    apiKey: assistantConfig.apiKey,
+    model: assistantConfig.model,
+    timeoutMs: assistantConfig.timeoutMs,
+  };
+  // Le nom technique choisi vient de la config : 'groq' si GROQ_* renseigné,
+  // 'openai-compatible' pour la configuration héritée AI_*.
+  return assistantConfig.providerName === 'groq'
+    ? createGroqProvider(settings)
+    : createOpenAICompatibleProvider(settings);
 }
+

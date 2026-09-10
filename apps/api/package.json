@@ -20,7 +20,8 @@
     "db:backup": "bash scripts/db-backup.sh",
     "db:restore": "bash scripts/db-restore.sh",
     "db:audit": "tsx src/scripts/db-audit.ts",
-    "db:perf-seed": "tsx src/scripts/perf-seed.ts"
+    "db:perf-seed": "tsx src/scripts/perf-seed.ts",
+    "assistant:smoke": "node scripts/assistant-smoke.mjs"
   },
   "dependencies": {
     "@finance/finance-core": "workspace:*",

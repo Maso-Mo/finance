@@ -307,11 +307,14 @@ export default function AssistantPage() {
                 Assistant non configuré sur le serveur.
               </p>
               <p className="mt-1">
-                Ajoutez la clé du fournisseur IA dans l’environnement de l’API
-                {statusQuery.data?.provider
+                Ajoutez <code className="rounded bg-amber-100 px-1 dark:bg-amber-900/60">GROQ_API_KEY</code>{' '}
+                et <code className="rounded bg-amber-100 px-1 dark:bg-amber-900/60">GROQ_MODEL</code> dans
+                l’environnement de l’API{statusQuery.data?.provider
                   ? ` (fournisseur détecté : ${statusQuery.data.provider})`
-                  : ' (aucun fournisseur détecté)'}{' '}
-                puis redémarrez le serveur pour activer la conversation.
+                  : ''}{' '}
+                (ou <code className="rounded bg-amber-100 px-1 dark:bg-amber-900/60">AI_*</code> pour un
+                endpoint compatible OpenAI) puis redémarrez le serveur pour
+                activer la conversation.
               </p>
             </div>
           ) : (
@@ -423,6 +426,16 @@ export default function AssistantPage() {
             <li>• Jamais écrire sans confirmation : tout passe par une carte à valider</li>
           </ul>
         </section>
+
+        <p className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-xs leading-relaxed text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+          Confidentialité&nbsp;: {statusQuery.data?.provider
+            ? `l’assistant utilise un service IA en ligne (${statusQuery.data.provider}).`
+            : 'l’assistant utilise un service IA en ligne lorsqu’il est configuré sur le serveur.'}{' '}
+          Seules les informations nécessaires à ta demande lui sont transmises.
+          Les SMS et relevés bancaires bruts ne sont jamais envoyés, et aucune
+          de tes données n’est utilisée pour écrire directement dans tes
+          finances.
+        </p>
 
         <p className="mt-4 text-xs text-neutral-500 dark:text-neutral-500">
           L’assistant peut se tromper : relisez chaque proposition avant de la
