@@ -6,41 +6,25 @@
  *  - n'appelle le fournisseur QUE si une clé est présente (GROQ_API_KEY,
  *    sinon AI_API_KEY hérité) ;
  *  - utilise uniquement des données SYNTHÉTIQUES : aucune donnée financière ;
- *  - la clé n'est jamais affichée ni loggée.
+ *  - la clé n'est jamais affichée ni loggée ;
+ *  - utilise LE VRAI transport du provider (`createConfiguredProvider`) : la
+ *    requête envoyée est EXACTEMENT celle de l'assistant (aucune divergence).
  *
  * Usage : pnpm --filter @finance/api assistant:smoke
+ *   (charge automatiquement apps/api/.env — `node --env-file-if-exists=.env` —
+ *   et TypeScript via tsx, d'où l'absence de build préalable)
  * Sortie : 0 si OK (ou non configuré), 1 si l'appel réel a échoué.
  */
 import 'dotenv/config';
 
-function firstNonEmpty(...values) {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim() !== '') return value.trim();
-  }
-  return '';
-}
-
-const apiKey = firstNonEmpty(process.env.GROQ_API_KEY, process.env.AI_API_KEY);
-const model = firstNonEmpty(process.env.GROQ_MODEL, process.env.AI_MODEL);
-const useGroq = firstNonEmpty(
-  process.env.GROQ_API_KEY,
-  process.env.GROQ_MODEL,
-  process.env.GROQ_BASE_URL,
+// Import dynamique APRÈS le chargement de l'environnement : la config du
+// provider est lue à l'initialisation du module (comme dans l'API réelle).
+const { createConfiguredProvider, ProviderError } = await import(
+  '../src/assistant/provider.ts'
 );
-const baseUrl =
-  (useGroq
-    ? process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1'
-    : process.env.AI_BASE_URL) || '';
-const timeoutMs = Number(
-  process.env.GROQ_TIMEOUT_MS ?? process.env.AI_TIMEOUT_MS ?? 30_000,
+const { assistantConfig, isAssistantConfigured } = await import(
+  '../src/assistant/config.ts'
 );
-
-const provider = useGroq ? 'groq' : 'openai-compatible';
-
-if (!apiKey || !model || !baseUrl) {
-  console.log('[assistant:smoke] non configuré (GROQ_API_KEY/GROQ_MODEL absents) — ignoré.');
-  process.exit(0);
-}
 
 // Requête SYNTHÉTIQUE minimale (aucune donnée réelle, aucune instruction).
 const messages = [
@@ -48,45 +32,36 @@ const messages = [
   { role: 'user', content: 'Dis-moi juste ok.' },
 ];
 
-const url = baseUrl.replace(/\/+$/, '').endsWith('/chat/completions')
-  ? baseUrl.replace(/\/+$/, '')
-  : `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+if (!isAssistantConfigured()) {
+  console.log('[assistant:smoke] non configuré (GROQ_API_KEY/GROQ_MODEL absents) — ignoré.');
+  process.exit(0);
+}
 
-const controller = new AbortController();
-const timer = setTimeout(() => controller.abort(), timeoutMs);
+const provider = createConfiguredProvider();
+if (!provider) {
+  console.log('[assistant:smoke] non configuré (provider indisponible) — ignoré.');
+  process.exit(0);
+}
 
-(async () => {
-  const startedAt = Date.now();
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({ model, messages, temperature: 0, max_tokens: 16 }),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-    const body = await res.json();
-    const content = body?.choices?.[0]?.message?.content?.trim();
-    if (!content) {
-      throw new Error('completion vide');
-    }
-    console.log(
-      `[assistant:smoke] ${provider} · modèle ${model} · ${res.status} · ${Date.now() - startedAt} ms · réponse: ${content.slice(0, 40)}`,
-    );
-    process.exit(0);
-  } catch (error) {
-    const kind =
-      error instanceof DOMException && error.name === 'AbortError'
-        ? 'timeout'
-        : error?.name ?? 'error';
-    console.error(`[assistant:smoke] échec ${provider} (${kind}) : ${String(error?.message ?? error).slice(0, 160)}`);
-    process.exit(1);
-  } finally {
-    clearTimeout(timer);
+// Paramètres effectifs (jamais la clé) : mêmes valeurs que l'assistant réel.
+console.log(
+  `[assistant:smoke] ${provider.name} · modèle ${provider.model} · max_completion_tokens=${assistantConfig.maxCompletionTokens} · reasoning_effort=${assistantConfig.reasoningEffort ?? 'n/a'} · include_reasoning=${assistantConfig.includeReasoning} · stream=false`,
+);
+
+const startedAt = Date.now();
+try {
+  const content = await provider.complete(messages);
+  const preview = content.replace(/\s+/g, ' ').slice(0, 40);
+  console.log(`[assistant:smoke] OK ${Date.now() - startedAt} ms · réponse: ${preview}`);
+  process.exit(0);
+} catch (error) {
+  const kind = error instanceof ProviderError ? error.name : (error?.name ?? 'Error');
+  const message = String(error?.message ?? error).slice(0, 200);
+  console.error(`[assistant:smoke] échec ${provider.name} (${kind}) : ${message}`);
+  if (error instanceof ProviderError) {
+    // Diagnostic technique SANS donnée sensible (ni clé, ni prompt, ni contexte).
+    console.error(`[assistant:smoke] diagnostic: ${JSON.stringify(error.diagnostics)}`);
   }
-})();
+  process.exit(1);
+}
+

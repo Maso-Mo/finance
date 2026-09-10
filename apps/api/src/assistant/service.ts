@@ -642,11 +642,15 @@ export async function assistantMessage(
   } catch (error) {
     if (error instanceof ProviderError) {
       // Log technique minimal : jamais de message/contexte, aucun secret.
+      // Le diagnostic ne contient que des métadonnées sûres (modèle, statut
+      // HTTP, finish_reason, compteurs de tokens) — utile pour comprendre un
+      // `content` vide (raisonnement GPT-OSS ayant épuisé le budget).
       console.warn('[assistant] provider error', {
         requestId,
         provider: provider.name,
         errorClass: error.name,
         durationMs: Date.now() - startedAt,
+        diagnostic: error.diagnostics,
       });
       throw new ApiError(502, 'Le service IA est momentanément indisponible. Réessaie dans un instant.');
     }

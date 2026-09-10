@@ -214,18 +214,30 @@ une abstraction `AssistantProvider` (transport HTTP OpenAI-compatible, aucun SDK
 
 ```bash
 GROQ_API_KEY=…                       # jamais commitée
-GROQ_MODEL=…                         # ex. llama-3.3-70b-versatile
+GROQ_MODEL=…                         # ex. openai/gpt-oss-20b
 GROQ_BASE_URL=https://api.groq.com/openai/v1   # défaut si absent
 GROQ_TIMEOUT_MS=30000                # défaut
+GROQ_MAX_COMPLETION_TOKENS=2048      # défaut (min 256) ; inclut le raisonnement
+GROQ_REASONING_EFFORT=low            # low|medium|high (modèles GPT-OSS/Qwen3)
+GROQ_INCLUDE_REASONING=false         # défaut : `message.reasoning` jamais exposé
 ```
 
+Sur les modèles à raisonnement (GPT-OSS), le budget `max_completion_tokens`
+couvre les tokens de raisonnement : un budget trop faible renvoie un `content`
+vide (`finish_reason=length`). Le provider n'utilise **jamais**
+`choices[0].message.reasoning` comme réponse et journalise en cas d'échec un
+diagnostic sûr (modèle, statut HTTP, `finish_reason`, compteurs de tokens).
+
 Un endpoint OpenAI-compatible hérité (modèle local LAN futur) reste
-configurable via `AI_BASE_URL`/`AI_API_KEY`/`AI_MODEL` sans toucher au métier.
+configurable via `AI_BASE_URL`/`AI_API_KEY`/`AI_MODEL` sans toucher au métier
+(`max_tokens`, aucun paramètre de raisonnement).
 L'assistant ne produit **jamais** d'écriture : uniquement des propositions
 (`AssistantActionProposal`) qui ne sont exécutées qu'après confirmation
 explicite de l'utilisateur (réexécution déterministe côté services métier).
 Test réel optionnel (jamais exécuté automatiquement) :
-`pnpm --filter @finance/api assistant:smoke` (ne tourne que si `GROQ_API_KEY`).
+`pnpm --filter @finance/api assistant:smoke` — charge `apps/api/.env`
+automatiquement, n'appelle le fournisseur que si `GROQ_API_KEY` est présente et
+utilise uniquement des données synthétiques.
 
 ## Dataset de performance (benchmark)
 
